@@ -177,12 +177,14 @@ class VecEnv(ABC):
         """
         raise NotImplementedError
 
-    def render(self) -> Optional[np.ndarray]:
+    def render(self, do_tile_images=True) -> Optional[np.ndarray]:
         """
         Gym environment rendering
 
         :param mode: the rendering type
         """
+        if self.render_mode == "human" and not do_tile_images:
+            raise ValueError("Cannot render in human mode without tiling images")
         try:
             imgs = self.get_images()
         except NotImplementedError:
@@ -190,14 +192,17 @@ class VecEnv(ABC):
             return
 
         # Create a big image by tiling images from subprocesses
-        bigimg = tile_images(imgs)
+        if do_tile_images:
+            final_image = tile_images(imgs)
+        else:
+            final_image = np.array(imgs)  # 4-D array (n_envs, height, width, channel)
         if self.render_mode == "human":
             import cv2  # pytype:disable=import-error
 
-            cv2.imshow("vecenv", bigimg[:, :, ::-1])
+            cv2.imshow("vecenv", final_image[:, :, ::-1])
             cv2.waitKey(1)
         elif self.render_mode == "rgb_array":
-            return bigimg
+            return final_image
         else:
             raise NotImplementedError(f"Render mode {self.render_mode} is not supported by VecEnvs")
 

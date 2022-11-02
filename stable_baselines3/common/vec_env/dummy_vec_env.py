@@ -85,7 +85,7 @@ class DummyVecEnv(VecEnv):
     def get_images(self) -> Sequence[np.ndarray]:
         return [env.render() for env in self.envs]
 
-    def render(self) -> Optional[np.ndarray]:
+    def render(self, do_tile_images = True) -> Optional[np.ndarray]:
         """
         Gym environment rendering. If there are multiple environments then
         they are tiled together in one image via ``BaseVecEnv.render()``.
@@ -96,11 +96,12 @@ class DummyVecEnv(VecEnv):
         only when ``num_envs == 1``.
 
         :param mode: The rendering type.
+        :param do_tile_images: Whether to tile images or not (if not, return 4-D array).
         """
         if self.num_envs == 1:
-            return self.envs[0].render()
+            return self.envs[0].render(do_tile_images=do_tile_images)
         else:
-            return super().render()
+            return super().render(do_tile_images=do_tile_images)
 
     def _save_obs(self, env_idx: int, obs: VecEnvObs) -> None:
         for key in self.keys:
