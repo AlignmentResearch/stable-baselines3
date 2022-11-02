@@ -23,6 +23,10 @@ class DummyVecEnv(VecEnv):
 
     def __init__(self, env_fns: List[Callable[[], gym.Env]]):
         self.envs = [fn() for fn in env_fns]
+        # check that the envs are actually different instances and not pointing to the same object
+        if len(set([id(env) for env in self.envs])) != len(self.envs):
+            raise ValueError("Error: the environments should be different instances")
+
         env = self.envs[0]
         VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
         obs_space = env.observation_space
