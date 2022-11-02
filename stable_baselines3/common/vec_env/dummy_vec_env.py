@@ -99,7 +99,7 @@ class DummyVecEnv(VecEnv):
         :param do_tile_images: Whether to tile images or not (if not, return 4-D array).
         """
         if self.num_envs == 1:
-            return self.envs[0].render(do_tile_images=do_tile_images)
+            return self.envs[0].render()
         else:
             return super().render(do_tile_images=do_tile_images)
 
