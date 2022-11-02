@@ -61,6 +61,15 @@ class VecEnv(ABC):
         self.action_space = action_space
         self.reset_infos = [{} for _ in range(num_envs)]  # store info returned by the reset method
 
+    @property
+    def render_mode(self) -> str:
+        """
+        The render mode
+
+        :return: the render mode
+        """
+        raise NotImplementedError()
+
     @abstractmethod
     def reset(self) -> VecEnvObs:
         """
@@ -168,7 +177,7 @@ class VecEnv(ABC):
         """
         raise NotImplementedError
 
-    def render(self, mode: str = "human") -> Optional[np.ndarray]:
+    def render(self) -> Optional[np.ndarray]:
         """
         Gym environment rendering
 
@@ -182,15 +191,15 @@ class VecEnv(ABC):
 
         # Create a big image by tiling images from subprocesses
         bigimg = tile_images(imgs)
-        if mode == "human":
+        if self.render_mode == "human":
             import cv2  # pytype:disable=import-error
 
             cv2.imshow("vecenv", bigimg[:, :, ::-1])
             cv2.waitKey(1)
-        elif mode == "rgb_array":
+        elif self.render_mode == "rgb_array":
             return bigimg
         else:
-            raise NotImplementedError(f"Render mode {mode} is not supported by VecEnvs")
+            raise NotImplementedError(f"Render mode {self.render_mode} is not supported by VecEnvs")
 
     @abstractmethod
     def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
@@ -278,8 +287,8 @@ class VecEnvWrapper(VecEnv):
     def close(self) -> None:
         return self.venv.close()
 
-    def render(self, mode: str = "human") -> Optional[np.ndarray]:
-        return self.venv.render(mode=mode)
+    def render(self) -> Optional[np.ndarray]:
+        return self.venv.render()
 
     def get_images(self) -> Sequence[np.ndarray]:
         return self.venv.get_images()

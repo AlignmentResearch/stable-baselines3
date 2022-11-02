@@ -43,7 +43,8 @@ class CustomGymEnv(gym.Env):
     def _choose_next_state(self):
         self.state = self.observation_space.sample()
 
-    def render(self, mode="human"):
+    def render(self):
+        mode = self.render_mode
         if mode == "rgb_array":
             return np.zeros((4, 4, 3))
 

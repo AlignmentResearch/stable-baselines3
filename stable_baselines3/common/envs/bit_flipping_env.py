@@ -203,7 +203,8 @@ class BitFlippingEnv(Env):
         distance = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
         return -(distance > 0).astype(np.float32)
 
-    def render(self, mode: str = "human") -> Optional[np.ndarray]:
+    def render(self) -> Optional[np.ndarray]:
+        mode = self.render_mode
         if mode == "rgb_array":
             return self.state.copy()
         print(self.state)

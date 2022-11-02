@@ -26,7 +26,7 @@ class DummyVecEnv(VecEnv):
         env = self.envs[0]
         VecEnv.__init__(self, len(env_fns), env.observation_space, env.action_space)
         obs_space = env.observation_space
-        self.keys, shapes, dtypes = obs_space_info(obs_space)
+        self.keys, shapes, dtypes = obs_space_info(obs_space) 
 
         self.buf_obs = OrderedDict([(k, np.zeros((self.num_envs,) + tuple(shapes[k]), dtype=dtypes[k])) for k in self.keys])
         self.buf_dones = np.zeros((self.num_envs,), dtype=bool)
@@ -34,6 +34,10 @@ class DummyVecEnv(VecEnv):
         self.buf_infos = [{} for _ in range(self.num_envs)]
         self.actions = None
         self.metadata = env.metadata
+    
+    @property
+    def render_mode(self):
+        return self.envs[0].render_mode
 
     def step_async(self, actions: np.ndarray) -> None:
         self.actions = actions

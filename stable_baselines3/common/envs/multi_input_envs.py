@@ -159,7 +159,7 @@ class SimpleMultiObsEnv(gym.Env):
 
         return self.get_state_mapping(), reward, done, truncated, {"got_to_end": got_to_end}
 
-    def render(self, mode: str = "human") -> None:
+    def render(self) -> None:
         """
         Prints the log of the environment.
 
