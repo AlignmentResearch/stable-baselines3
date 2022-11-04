@@ -45,7 +45,7 @@ def _worker(  # noqa: C901
                 observation, reset_info = env.reset()
                 remote.send((observation, reset_info))
             elif cmd == "render":
-                remote.send(env.render(data))
+                remote.send(env.render())
             elif cmd == "close":
                 env.close()
                 remote.close()
