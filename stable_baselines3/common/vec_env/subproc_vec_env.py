@@ -167,7 +167,7 @@ class SubprocVecEnv(VecEnv):
         for pipe in self.remotes:
             # gather images from subprocesses
             # `mode` will be taken into account later
-            pipe.send(("render", "rgb_array"))
+            pipe.send(("render", None))
         imgs = [pipe.recv() for pipe in self.remotes]
         return imgs
 
