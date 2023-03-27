@@ -90,7 +90,7 @@ def maybe_transpose(observation: np.ndarray, observation_space: spaces.Space) ->
 
 
 def preprocess_obs(
-    obs: th.Tensor,
+    obs: Union[th.Tensor, Dict[str, th.Tensor]],
     observation_space: spaces.Space,
     normalize_images: bool = True,
 ) -> Union[th.Tensor, Dict[str, th.Tensor]]:
