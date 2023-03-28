@@ -16,7 +16,8 @@ else:
 from stable_baselines3.common import callbacks, vec_env
 
 GymEnv = Union[gym.Env, vec_env.VecEnv]
-GymObs = Union[Tuple, Dict[str, Any], np.ndarray, int]
+GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
+TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, int]
 GymStepReturn = Tuple[GymObs, float, bool, Dict]
 TensorDict = Dict[Union[str, int], th.Tensor]
 OptimizerStateDict = Dict[str, Any]

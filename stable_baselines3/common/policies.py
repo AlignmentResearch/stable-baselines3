@@ -30,7 +30,7 @@ from stable_baselines3.common.torch_layers import (
     NatureCNN,
     create_mlp,
 )
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
 from stable_baselines3.common.utils import get_device, is_vectorized_observation, obs_as_tensor
 
 SelfBaseModel = TypeVar("SelfBaseModel", bound="BaseModel")
@@ -118,7 +118,7 @@ class BaseModel(nn.Module):
         """Helper method to create a features extractor."""
         return self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
 
-    def extract_features(self, obs: Union[th.Tensor, Dict[str, th.Tensor]], features_extractor: Optional[BaseFeaturesExtractor] = None) -> th.Tensor:
+    def extract_features(self, obs: TorchGymObs, features_extractor: Optional[BaseFeaturesExtractor] = None) -> th.Tensor:
         """
         Preprocess the observation if needed and extract features.
 
@@ -613,7 +613,7 @@ class ActorCriticPolicy(BasePolicy):
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def forward(self, obs: TorchGymObs, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -637,7 +637,7 @@ class ActorCriticPolicy(BasePolicy):
         actions = actions.reshape((-1,) + self.action_space.shape)
         return actions, values, log_prob
 
-    def extract_features(self, obs: th.Tensor) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
+    def extract_features(self, obs: TorchGymObs) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
         """
         Preprocess the observation if needed and extract features.
 
@@ -686,7 +686,7 @@ class ActorCriticPolicy(BasePolicy):
         """
         return self.get_distribution(observation).get_actions(deterministic=deterministic)
 
-    def evaluate_actions(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
+    def evaluate_actions(self, obs: TorchGymObs, actions: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """
         Evaluate actions according to the current policy,
         given the observations.
@@ -710,7 +710,7 @@ class ActorCriticPolicy(BasePolicy):
         entropy = distribution.entropy()
         return values, log_prob, entropy
 
-    def get_distribution(self, obs: th.Tensor) -> Distribution:
+    def get_distribution(self, obs: TorchGymObs) -> Distribution:
         """
         Get the current policy distribution given the observations.
 
@@ -721,7 +721,7 @@ class ActorCriticPolicy(BasePolicy):
         latent_pi = self.mlp_extractor.forward_actor(features)
         return self._get_action_dist_from_latent(latent_pi)
 
-    def predict_values(self, obs: th.Tensor) -> th.Tensor:
+    def predict_values(self, obs: TorchGymObs) -> th.Tensor:
         """
         Get the estimated values according to the current policy given the observations.
 
@@ -936,7 +936,7 @@ class ContinuousCritic(BaseModel):
             self.add_module(f"qf{idx}", q_net)
             self.q_networks.append(q_net)
 
-    def forward(self, obs: th.Tensor, actions: th.Tensor) -> Tuple[th.Tensor, ...]:
+    def forward(self, obs: TorchGymObs, actions: th.Tensor) -> Tuple[th.Tensor, ...]:
         # Learn the features extractor using the policy loss only
         # when the features_extractor is shared with the actor
         with th.set_grad_enabled(not self.share_features_extractor):
@@ -944,7 +944,7 @@ class ContinuousCritic(BaseModel):
         qvalue_input = th.cat([features, actions], dim=1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
-    def q1_forward(self, obs: th.Tensor, actions: th.Tensor) -> th.Tensor:
+    def q1_forward(self, obs: TorchGymObs, actions: th.Tensor) -> th.Tensor:
         """
         Only predict the Q-value using the first network.
         This allows to reduce computation when all the estimates are not needed
