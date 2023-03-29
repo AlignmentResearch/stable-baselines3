@@ -69,7 +69,9 @@ class BaseBuffer(ABC):
         shape = arr.shape
         if len(shape) < 3:
             shape = shape + (1,)
-        return arr.swapaxes(0, 1).reshape(shape[0] * shape[1], *shape[2:])
+        # Looks like the fact that the time steps are now contiguous isn't used at all in PPO or A2C
+        # and it costs a lot. So we don't call .swapaxes(0, 1) here, merely reshape.
+        return arr.reshape(shape[0] * shape[1], *shape[2:])
 
     def size(self) -> int:
         """
@@ -684,13 +686,8 @@ class DictRolloutBuffer(RolloutBuffer):
 
         self.gae_lambda = gae_lambda
         self.gamma = gamma
-        self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
-        self.returns, self.episode_starts, self.values, self.log_probs = None, None, None, None
         self.generator_ready = False
-        self.reset()
 
-    def reset(self) -> None:
-        assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
         self.observations = {}
         for key, obs_input_shape in self.obs_shape.items():
             self.observations[key] = th.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=th.float32)
@@ -701,6 +698,19 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.reset()
+
+    def reset(self) -> None:
+        assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
+        for key, obs_input_shape in self.obs_shape.items():
+            self.observations[key] = self.observations[key].view(self.buffer_size, self.n_envs, *obs_input_shape)
+        self.actions = self.actions.view(self.buffer_size, self.n_envs, self.action_dim)
+        self.rewards = self.rewards.view(self.buffer_size, self.n_envs)
+        self.returns = self.returns.view(self.buffer_size, self.n_envs)
+        self.episode_starts = self.episode_starts.view(self.buffer_size, self.n_envs)
+        self.values = self.values.view(self.buffer_size, self.n_envs)
+        self.log_probs = self.log_probs.view(self.buffer_size, self.n_envs)
+        self.advantages = self.advantages.view(self.buffer_size, self.n_envs)
         self.generator_ready = False
         super(RolloutBuffer, self).reset()
 
