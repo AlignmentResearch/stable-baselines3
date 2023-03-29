@@ -12,6 +12,7 @@ from stable_baselines3.common.type_aliases import (
     DictRolloutBufferSamples,
     ReplayBufferSamples,
     RolloutBufferSamples,
+    TensorIndex,
 )
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
@@ -745,7 +746,6 @@ class DictRolloutBuffer(RolloutBuffer):
 
     def get(self, batch_size: Optional[int] = None) -> Generator[DictRolloutBufferSamples, None, None]:
         assert self.full, ""
-        indices = th.randperm(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
 
@@ -762,12 +762,19 @@ class DictRolloutBuffer(RolloutBuffer):
         if batch_size is None:
             batch_size = self.buffer_size * self.n_envs
 
-        start_idx = 0
-        while start_idx < self.buffer_size * self.n_envs:
-            yield self._get_samples(indices[start_idx : start_idx + batch_size])
-            start_idx += batch_size
 
-    def _get_samples(self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None) -> DictRolloutBufferSamples:
+        assert batch_size == self.buffer_size * self.n_envs
+        if batch_size == self.buffer_size * self.n_envs:
+            yield self._get_samples(slice(None))
+        else:
+            indices = th.randperm(self.buffer_size * self.n_envs)
+            start_idx = 0
+
+            while start_idx < self.buffer_size * self.n_envs:
+                yield self._get_samples(indices[start_idx : start_idx + batch_size])
+                start_idx += batch_size
+
+    def _get_samples(self, batch_inds: TensorIndex, env: Optional[VecNormalize] = None) -> DictRolloutBufferSamples:
 
         return DictRolloutBufferSamples(
             observations={key: self.to_torch(obs[batch_inds]) for (key, obs) in self.observations.items()},

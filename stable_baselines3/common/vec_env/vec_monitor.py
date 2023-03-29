@@ -3,6 +3,7 @@ import warnings
 from typing import Optional, Tuple
 
 import numpy as np
+import torch
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn, VecEnvWrapper
 
@@ -68,8 +69,8 @@ class VecMonitor(VecEnvWrapper):
 
     def reset(self) -> VecEnvObs:
         obs = self.venv.reset()
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32)
+        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32)
         return obs
 
     def step_wait(self) -> VecEnvStepReturn:

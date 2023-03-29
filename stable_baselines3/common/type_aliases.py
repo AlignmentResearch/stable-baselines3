@@ -20,6 +20,7 @@ GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
 TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, int]
 GymStepReturn = Tuple[GymObs, float, bool, Dict]
 TensorDict = Dict[Union[str, int], th.Tensor]
+TensorIndex = Union[int, slice, th.Tensor]
 OptimizerStateDict = Dict[str, Any]
 MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.BaseCallback]
 
