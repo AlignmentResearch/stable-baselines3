@@ -131,8 +131,8 @@ class BaseBuffer(ABC):
             by reference). This argument is inoperative if the device is not the CPU.
         :return:
         """
-        if copy:
-            return th.tensor(array, device=self.device)
+        if copy and self.device == "cpu":
+            return th.as_tensor(array, device=self.device).clone()
         return th.as_tensor(array, device=self.device)
 
     @staticmethod
@@ -388,12 +388,12 @@ class RolloutBuffer(BaseBuffer):
         :param dones: if the last step was a terminal step (one bool for each env).
         """
         # Convert to numpy
-        last_values = last_values.clone().cpu().numpy().flatten()
+        last_values = last_values.flatten()
 
         last_gae_lam = 0
         for step in reversed(range(self.buffer_size)):
             if step == self.buffer_size - 1:
-                next_non_terminal = 1.0 - dones
+                next_non_terminal = ~dones
                 next_values = last_values
             else:
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
@@ -727,17 +727,17 @@ class DictRolloutBuffer(RolloutBuffer):
             log_prob = log_prob.reshape(-1, 1)
 
         for key in self.observations.keys():
-            obs_ = np.array(obs[key]).copy()
+            obs_ = obs[key]
             # Reshape needed when using multiple envs with discrete observations
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
             self.observations[key][self.pos] = obs_
 
-        self.actions[self.pos] = action
+        self.actions[self.pos] = th.as_tensor(action)
         self.rewards[self.pos] = reward
-        self.episode_starts[self.pos] = episode_start
-        self.values[self.pos] = value
+        self.episode_starts[self.pos] = th.as_tensor(episode_start)
+        self.values[self.pos] = value.flatten()
         self.log_probs[self.pos] = log_prob
         self.pos += 1
         if self.pos == self.buffer_size:
