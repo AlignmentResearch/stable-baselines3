@@ -692,23 +692,23 @@ class DictRolloutBuffer(RolloutBuffer):
         assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
         self.observations = {}
         for key, obs_input_shape in self.obs_shape.items():
-            self.observations[key] = np.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=np.float32)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+            self.observations[key] = th.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=th.float32)
+        self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.generator_ready = False
         super(RolloutBuffer, self).reset()
 
     def add(
         self,
-        obs: Dict[str, np.ndarray],
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
+        obs: Dict[str, th.Tensor],
+        action: th.Tensor,
+        reward: th.Tensor,
+        episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
     ) -> None:  # pytype: disable=signature-mismatch
@@ -734,18 +734,18 @@ class DictRolloutBuffer(RolloutBuffer):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
             self.observations[key][self.pos] = obs_
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.episode_starts[self.pos] = np.array(episode_start).copy()
-        self.values[self.pos] = value.clone().cpu().numpy().flatten()
-        self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        self.actions[self.pos] = action
+        self.rewards[self.pos] = reward
+        self.episode_starts[self.pos] = episode_start
+        self.values[self.pos] = value
+        self.log_probs[self.pos] = log_prob
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
     def get(self, batch_size: Optional[int] = None) -> Generator[DictRolloutBufferSamples, None, None]:
         assert self.full, ""
-        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        indices = th.randperm(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
 
@@ -767,7 +767,7 @@ class DictRolloutBuffer(RolloutBuffer):
             yield self._get_samples(indices[start_idx : start_idx + batch_size])
             start_idx += batch_size
 
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> DictRolloutBufferSamples:
+    def _get_samples(self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None) -> DictRolloutBufferSamples:
 
         return DictRolloutBufferSamples(
             observations={key: self.to_torch(obs[batch_inds]) for (key, obs) in self.observations.items()},
