@@ -76,15 +76,19 @@ def evaluate_policy(
     episode_rewards = []
     episode_lengths = []
 
-    episode_counts = torch.zeros(n_envs, dtype=torch.int64)
-    # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = torch.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=torch.int64)
-
-    current_rewards = torch.zeros(n_envs)
-    current_lengths = torch.zeros(n_envs, dtype=torch.int64)
     observations = env.reset()
+    if isinstance(observations, dict):
+        device = next(iter(observations.values())).device
+    else:
+        device = observations.device
+    episode_counts = torch.zeros(n_envs, dtype=torch.int64, device=device)
+    # Divides episodes among different sub environments in the vector as evenly as possible
+    episode_count_targets = torch.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=torch.int64, device=device)
+
+    current_rewards = torch.zeros(n_envs, dtype=torch.float32, device=device)
+    current_lengths = torch.zeros(n_envs, dtype=torch.int64, device=device)
     states = None
-    episode_starts = torch.ones((env.num_envs,), dtype=torch.bool)
+    episode_starts = torch.ones((env.num_envs,), dtype=torch.bool, device=device)
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(observations, state=states, episode_start=episode_starts, deterministic=deterministic)
         observations, rewards, dones, infos = env.step(actions)

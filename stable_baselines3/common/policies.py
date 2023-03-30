@@ -219,7 +219,7 @@ class BaseModel(nn.Module):
         """
         self.train(mode)
 
-    def obs_to_tensor(self, observation: Union[np.ndarray, Dict[str, np.ndarray]]) -> Tuple[th.Tensor, bool]:
+    def obs_to_tensor(self, observation: Union[th.Tensor, Dict[str, th.Tensor], np.ndarray, Dict[str, np.ndarray]]) -> Tuple[th.Tensor, bool]:
         """
         Convert an input observation to a PyTorch tensor that can be fed to a model.
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -237,7 +237,10 @@ class BaseModel(nn.Module):
                 if is_image_space(obs_space):
                     obs_ = maybe_transpose(obs, obs_space)
                 else:
-                    obs_ = np.array(obs)
+                    if isinstance(obs, th.Tensor):
+                        obs_ = obs
+                    else:
+                        obs_ = np.array(obs)
                 vectorized_env = vectorized_env or is_vectorized_observation(obs_, obs_space)
                 # Add batch dimension if needed
                 observation[key] = obs_.reshape((-1,) + self.observation_space[key].shape)
@@ -247,7 +250,7 @@ class BaseModel(nn.Module):
             # as PyTorch use channel first format
             observation = maybe_transpose(observation, self.observation_space)
 
-        else:
+        elif not isinstance(observation, th.Tensor):
             observation = np.array(observation)
 
         if not isinstance(observation, dict):
