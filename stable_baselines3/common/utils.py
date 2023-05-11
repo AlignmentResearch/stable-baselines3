@@ -4,13 +4,15 @@ import platform
 import random
 import re
 from collections import deque
+from inspect import signature
 from itertools import zip_longest
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
-import gym
+import cloudpickle
+import gymnasium as gym
 import numpy as np
 import torch as th
-from gym import spaces
+from gymnasium import spaces
 
 import stable_baselines3 as sb3
 
@@ -76,7 +78,7 @@ def update_learning_rate(optimizer: th.optim.Optimizer, learning_rate: float) ->
         param_group["lr"] = learning_rate
 
 
-def get_schedule_fn(value_schedule: Union[Schedule, float, int]) -> Schedule:
+def get_schedule_fn(value_schedule: Union[Schedule, float]) -> Schedule:
     """
     Transform (if needed) learning rate and clip range (for PPO)
     to callable.
@@ -228,6 +230,24 @@ def check_for_correct_spaces(env: GymEnv, observation_space: spaces.Space, actio
         raise ValueError(f"Observation spaces do not match: {observation_space} != {env.observation_space}")
     if action_space != env.action_space:
         raise ValueError(f"Action spaces do not match: {action_space} != {env.action_space}")
+
+
+def check_shape_equal(space1: spaces.Space, space2: spaces.Space) -> None:
+    """
+    If the spaces are Box, check that they have the same shape.
+
+    If the spaces are Dict, it recursively checks the subspaces.
+
+    :param space1: Space
+    :param space2: Other space
+    """
+    if isinstance(space1, spaces.Dict):
+        assert isinstance(space2, spaces.Dict), "spaces must be of the same type"
+        assert space1.spaces.keys() == space2.spaces.keys(), "spaces must have the same keys"
+        for key in space1.spaces.keys():
+            check_shape_equal(space1.spaces[key], space2.spaces[key])
+    elif isinstance(space1, spaces.Box):
+        assert space1.shape == space2.shape, "spaces must have the same shape"
 
 
 def is_vectorized_box_observation(observation: np.ndarray, observation_space: spaces.Box) -> bool:
@@ -452,9 +472,7 @@ def polyak_update(
             th.add(target_param.data, param.data, alpha=tau, out=target_param.data)
 
 
-def obs_as_tensor(
-    obs: Union[np.ndarray, Dict[Union[str, int], np.ndarray]], device: th.device
-) -> Union[th.Tensor, TensorDict]:
+def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.device) -> Union[th.Tensor, TensorDict]:
     """
     Moves the observation to the given device.
 
@@ -515,11 +533,34 @@ def get_system_info(print_info: bool = True) -> Tuple[Dict[str, str], str]:
         "PyTorch": th.__version__,
         "GPU Enabled": str(th.cuda.is_available()),
         "Numpy": np.__version__,
-        "Gym": gym.__version__,
+        "Cloudpickle": cloudpickle.__version__,
+        "Gymnasium": gym.__version__,
     }
+    try:
+        import gym as openai_gym  # pytype: disable=import-error
+
+        env_info.update({"OpenAI Gym": openai_gym.__version__})
+    except ImportError:
+        pass
+
     env_info_str = ""
     for key, value in env_info.items():
         env_info_str += f"- {key}: {value}\n"
     if print_info:
         print(env_info_str)
     return env_info, env_info_str
+
+
+def compat_gym_seed(env: GymEnv, seed: int) -> None:
+    """
+    Compatibility helper to seed Gym envs.
+
+    :param env: The Gym environment.
+    :param seed: The seed for the pseudo random generator
+    """
+    if "seed" in signature(env.unwrapped.reset).parameters:
+        # gym >= 0.23.1
+        env.reset(seed=seed)
+    else:
+        # VecEnv and backward compatibility
+        env.seed(seed)

@@ -3,6 +3,162 @@
 Changelog
 ==========
 
+Release 2.0.0a8 (WIP)
+--------------------------
+
+**Gymnasium support**
+
+.. warning::
+
+  Stable-Baselines3 (SB3) v2.0 will be the last one supporting python 3.7 (end of life in June 2023).
+  We highly recommended you to upgrade to Python >= 3.8.
+
+
+Breaking Changes:
+^^^^^^^^^^^^^^^^^
+- Switched to Gymnasium as primary backend, Gym 0.21 and 0.26 are still supported via the ``shimmy`` package (@carlosluis, @arjun-kg, @tlpss)
+- The deprecated ``online_sampling`` argument of ``HerReplayBuffer`` was removed
+- Removed deprecated ``stack_observation_space`` method of ``StackedObservations``
+- Renamed environment output observations in ``evaluate_policy`` to prevent shadowing the input observations during callbacks (@npit)
+- Upgraded wrappers and custom environment to Gymnasium
+- Refined the ``HumanOutputFormat`` file check: now it verifies if the object is an instance of ``io.TextIOBase`` instead of only checking for the presence of a ``write`` method.
+
+New Features:
+^^^^^^^^^^^^^
+
+
+`SB3-Contrib`_
+^^^^^^^^^^^^^^
+
+`RL Zoo`_
+^^^^^^^^^
+
+Bug Fixes:
+^^^^^^^^^^
+- Fixed ``VecExtractDictObs`` does not handle terminal observation (@WeberSamuel)
+- Set NumPy version to ``>=1.20`` due to use of ``numpy.typing`` (@troiganto)
+- Fixed loading DQN changes ``target_update_interval`` (@tobirohrer)
+
+Deprecations:
+^^^^^^^^^^^^^
+
+Others:
+^^^^^^^
+- Fixed ``stable_baselines3/a2c/*.py`` type hints
+- Fixed ``stable_baselines3/ppo/*.py`` type hints
+- Fixed ``stable_baselines3/sac/*.py`` type hints
+- Fixed ``stable_baselines3/td3/*.py`` type hints
+- Fixed ``stable_baselines3/common/base_class.py`` type hints
+- Fixed ``stable_baselines3/common/logger.py`` type hints
+- Fixed ``stable_baselines3/common/envs/*.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/vec_monitor|vec_extract_dict_obs|util.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/base_vec_env.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/vec_frame_stack.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/dummy_vec_env.py`` type hints
+- Upgraded docker images to use mamba/micromamba and CUDA 11.7
+- Updated env checker to reflect what subset of Gymnasium is supported and improve GoalEnv checks
+- Improve type annotation of wrappers
+- Tests envs are now checked too
+- Added render test for ``VecEnv``
+- Update issue templates and env info saved with the model
+- Changed ``seed()`` method return type from ``List`` to ``Sequence``
+
+Documentation:
+^^^^^^^^^^^^^^
+- Added documentation about ``VecEnv`` API vs Gym API
+- Upgraded tutorials to Gymnasium API
+- Make it more explicit when using ``VecEnv`` vs Gym env
+- Added UAV_Navigation_DRL_AirSim to the project page (@heleidsn)
+- Added ``EvalCallback`` example (@sidney-tio)
+- Update custom env documentation
+
+
+Release 1.8.0 (2023-04-07)
+--------------------------
+
+**Multi-env HerReplayBuffer, Open RL Benchmark, Improved env checker**
+
+.. warning::
+
+  Stable-Baselines3 (SB3) v1.8.0 will be the last one to use Gym as a backend.
+  Starting with v2.0.0, Gymnasium will be the default backend (though SB3 will have compatibility layers for Gym envs).
+  You can find a migration guide here: https://gymnasium.farama.org/content/migration-guide/.
+  If you want to try the SB3 v2.0 alpha version, you can take a look at `PR #1327 <https://github.com/DLR-RM/stable-baselines3/pull/1327>`_.
+
+
+Breaking Changes:
+^^^^^^^^^^^^^^^^^
+- Removed shared layers in ``mlp_extractor`` (@AlexPasqua)
+- Refactored ``StackedObservations`` (it now handles dict obs, ``StackedDictObservations`` was removed)
+- You must now explicitely pass a ``features_extractor`` parameter when calling ``extract_features()``
+- Dropped offline sampling for ``HerReplayBuffer``
+- As ``HerReplayBuffer`` was refactored to support multiprocessing, previous replay buffer are incompatible with this new version
+- ``HerReplayBuffer`` doesn't require a ``max_episode_length`` anymore
+
+New Features:
+^^^^^^^^^^^^^
+- Added ``repeat_action_probability`` argument in ``AtariWrapper``.
+- Only use ``NoopResetEnv`` and ``MaxAndSkipEnv`` when needed in ``AtariWrapper``
+- Added support for dict/tuple observations spaces for ``VecCheckNan``, the check is now active in the ``env_checker()`` (@DavyMorgan)
+- Added multiprocessing support for ``HerReplayBuffer``
+- ``HerReplayBuffer`` now supports all datatypes supported by ``ReplayBuffer``
+- Provide more helpful failure messages when validating the ``observation_space`` of custom gym environments using ``check_env`` (@FieteO)
+- Added ``stats_window_size`` argument to control smoothing in rollout logging (@jonasreiher)
+
+
+`SB3-Contrib`_
+^^^^^^^^^^^^^^
+- Added warning about potential crashes caused by ``check_env`` in the ``MaskablePPO`` docs (@AlexPasqua)
+- Fixed ``sb3_contrib/qrdqn/*.py`` type hints
+- Removed shared layers in ``mlp_extractor`` (@AlexPasqua)
+
+`RL Zoo`_
+^^^^^^^^^
+- `Open RL Benchmark <https://github.com/openrlbenchmark/openrlbenchmark/issues/7>`_
+- Upgraded to new `HerReplayBuffer` implementation that supports multiple envs
+- Removed `TimeFeatureWrapper` for Panda and Fetch envs, as the new replay buffer should handle timeout.
+- Tuned hyperparameters for RecurrentPPO on Swimmer
+- Documentation is now built using Sphinx and hosted on read the doc
+- Removed `use_auth_token` for push to hub util
+- Reverted from v3 to v2 for HumanoidStandup, Reacher, InvertedPendulum and InvertedDoublePendulum since they were not part of the mujoco refactoring (see https://github.com/openai/gym/pull/1304)
+- Fixed `gym-minigrid` policy (from `MlpPolicy` to `MultiInputPolicy`)
+- Replaced deprecated `optuna.suggest_loguniform(...)` by `optuna.suggest_float(..., log=True)`
+- Switched to `ruff` and `pyproject.toml`
+- Removed `online_sampling` and `max_episode_length` argument when using `HerReplayBuffer`
+
+Bug Fixes:
+^^^^^^^^^^
+- Fixed Atari wrapper that missed the reset condition (@luizapozzobon)
+- Added the argument ``dtype`` (default to ``float32``) to the noise for consistency with gym action (@sidney-tio)
+- Fixed PPO train/n_updates metric not accounting for early stopping (@adamfrly)
+- Fixed loading of normalized image-based environments
+- Fixed ``DictRolloutBuffer.add`` with multidimensional action space (@younik)
+
+Deprecations:
+^^^^^^^^^^^^^
+
+Others:
+^^^^^^^
+- Fixed ``tests/test_tensorboard.py`` type hint
+- Fixed ``tests/test_vec_normalize.py`` type hint
+- Fixed ``stable_baselines3/common/monitor.py`` type hint
+- Added tests for StackedObservations
+- Removed Gitlab CI file
+- Moved from ``setup.cg`` to ``pyproject.toml`` configuration file
+- Switched from ``flake8`` to ``ruff``
+- Upgraded AutoROM to latest version
+- Fixed ``stable_baselines3/dqn/*.py`` type hints
+- Added ``extra_no_roms`` option for package installation without Atari Roms
+
+Documentation:
+^^^^^^^^^^^^^^
+- Renamed ``load_parameters`` to ``set_parameters`` (@DavyMorgan)
+- Clarified documentation about subproc multiprocessing for A2C (@Bonifatius94)
+- Fixed typo in ``A2C`` docstring (@AlexPasqua)
+- Renamed timesteps to episodes for ``log_interval`` description (@theSquaredError)
+- Removed note about gif creation for Atari games (@harveybellini)
+- Added information about default network architecture
+- Update information about Gymnasium support
 
 Release 1.7.0 (2023-01-10)
 --------------------------
@@ -168,7 +324,7 @@ Bug Fixes:
 - Fixed missing verbose parameter passing in the ``EvalCallback`` constructor (@burakdmb)
 - Fixed the issue that when updating the target network in DQN, SAC, TD3, the ``running_mean`` and ``running_var`` properties of batch norm layers are not updated (@honglu2875)
 - Fixed incorrect type annotation of the replay_buffer_class argument in ``common.OffPolicyAlgorithm`` initializer, where an instance instead of a class was required (@Rocamonde)
-- Fixed loading saved model with different number of envrionments
+- Fixed loading saved model with different number of environments
 - Removed ``forward()`` abstract method declaration from ``common.policies.BaseModel`` (already defined in ``torch.nn.Module``) to fix type errors in subclasses (@Rocamonde)
 - Fixed the return type of ``.load()`` and ``.learn()`` methods in ``BaseAlgorithm`` so that they now use ``TypeVar`` (@Rocamonde)
 - Fixed an issue where keys with different tags but the same key raised an error in ``common.logger.HumanOutputFormat`` (@Rocamonde and @AdamGleave)
@@ -211,6 +367,7 @@ Breaking Changes:
 
 New Features:
 ^^^^^^^^^^^^^
+
 
 `SB3-Contrib`_
 ^^^^^^^^^^^^^^
@@ -257,7 +414,7 @@ Release 1.5.0 (2022-03-25)
 
 Breaking Changes:
 ^^^^^^^^^^^^^^^^^
-- Switched minimum Gym version to 0.21.0.
+- Switched minimum Gym version to 0.21.0
 
 New Features:
 ^^^^^^^^^^^^^
@@ -1182,5 +1339,7 @@ And all the contributors:
 @eleurent @ac-93 @cove9988 @theDebugger811 @hsuehch @Demetrio92 @thomasgubler @IperGiove @ScheiklP
 @simoninithomas @armandpl @manuel-delverme @Gautam-J @gianlucadecola @buoyancy99 @caburu @xy9485
 @Gregwar @ycheng517 @quantitative-technologies @bcollazo @git-thor @TibiGG @cool-RR @MWeltevrede
-@Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875 @yuanmingqi
+@carlosluis @arjun-kg @tlpss
+@Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875
 @anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde @tobirohrer @ZikangXiong
+@DavyMorgan @luizapozzobon @Bonifatius94 @theSquaredError @harveybellini @DavyMorgan @FieteO @jonasreiher @npit @WeberSamuel @troiganto
