@@ -228,7 +228,7 @@ class BaseModel(nn.Module):
             )
         return vectorized_env
 
-    def obs_to_tensor(self, observation: TorchGymObs]) -> Tuple[th.Tensor, bool]:
+    def obs_to_tensor(self, observation: TorchGymObs) -> Tuple[th.Tensor, bool]:
         """
         Convert an input observation to a PyTorch tensor that can be fed to a model.
         Includes sugar-coating to handle different observations (e.g. normalizing images).
