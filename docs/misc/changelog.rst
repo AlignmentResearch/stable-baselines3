@@ -3,7 +3,7 @@
 Changelog
 ==========
 
-Release 2.0.0a8 (WIP)
+Release 2.0.0a11 (WIP)
 --------------------------
 
 **Gymnasium support**
@@ -22,6 +22,7 @@ Breaking Changes:
 - Renamed environment output observations in ``evaluate_policy`` to prevent shadowing the input observations during callbacks (@npit)
 - Upgraded wrappers and custom environment to Gymnasium
 - Refined the ``HumanOutputFormat`` file check: now it verifies if the object is an instance of ``io.TextIOBase`` instead of only checking for the presence of a ``write`` method.
+- Because of new Gym API (0.26+), the random seed passed to ``vec_env.seed(seed=seed)`` will only be effective after then ``env.reset()`` call.
 
 New Features:
 ^^^^^^^^^^^^^
@@ -38,6 +39,8 @@ Bug Fixes:
 - Fixed ``VecExtractDictObs`` does not handle terminal observation (@WeberSamuel)
 - Set NumPy version to ``>=1.20`` due to use of ``numpy.typing`` (@troiganto)
 - Fixed loading DQN changes ``target_update_interval`` (@tobirohrer)
+- Fixed env checker to properly reset the env before calling ``step()`` when checking
+  for ``Inf`` and ``NaN`` (@lutogniew)
 
 Deprecations:
 ^^^^^^^^^^^^^
@@ -55,6 +58,7 @@ Others:
 - Fixed ``stable_baselines3/common/vec_env/base_vec_env.py`` type hints
 - Fixed ``stable_baselines3/common/vec_env/vec_frame_stack.py`` type hints
 - Fixed ``stable_baselines3/common/vec_env/dummy_vec_env.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/subproc_vec_env.py`` type hints
 - Upgraded docker images to use mamba/micromamba and CUDA 11.7
 - Updated env checker to reflect what subset of Gymnasium is supported and improve GoalEnv checks
 - Improve type annotation of wrappers
@@ -62,6 +66,7 @@ Others:
 - Added render test for ``VecEnv``
 - Update issue templates and env info saved with the model
 - Changed ``seed()`` method return type from ``List`` to ``Sequence``
+- Updated env checker doc and requirements for tuple spaces/goal envs
 
 Documentation:
 ^^^^^^^^^^^^^^
@@ -71,6 +76,7 @@ Documentation:
 - Added UAV_Navigation_DRL_AirSim to the project page (@heleidsn)
 - Added ``EvalCallback`` example (@sidney-tio)
 - Update custom env documentation
+- Added `pink-noise-rl` to projects page
 
 
 Release 1.8.0 (2023-04-07)
@@ -1343,3 +1349,4 @@ And all the contributors:
 @Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875
 @anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde @tobirohrer @ZikangXiong
 @DavyMorgan @luizapozzobon @Bonifatius94 @theSquaredError @harveybellini @DavyMorgan @FieteO @jonasreiher @npit @WeberSamuel @troiganto
+@lutogniew
