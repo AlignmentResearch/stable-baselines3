@@ -193,7 +193,9 @@ class ResultsWriter:
         mode = "w" if override_existing else "a"
         # Prevent newline issue on Windows, see GH issue #692
         self.file_handler = open(filename, f"{mode}t", newline="\n")
-        self.logger = csv.DictWriter(self.file_handler, fieldnames=("r", "l", "t", *extra_keys))
+        self.logger = csv.DictWriter(
+            self.file_handler, fieldnames=("r", "l", "t", *extra_keys)
+        )  # pytype: disable=wrong-arg-types
         if override_existing:
             self.file_handler.write(f"#{json.dumps(header)}\n")
             self.logger.writeheader()
@@ -202,7 +204,7 @@ class ResultsWriter:
 
     def write_row(self, epinfo: Dict[str, float]) -> None:
         """
-        Close the file handler
+        Write row of monitor data to csv log file.
 
         :param epinfo: the information on episodic return, length, and time
         """

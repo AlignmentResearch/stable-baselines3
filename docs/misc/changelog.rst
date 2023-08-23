@@ -3,7 +3,56 @@
 Changelog
 ==========
 
-Release 2.0.0a11 (WIP)
+Release 2.1.0 (2023-08-17)
+--------------------------
+
+**Float64 actions , Gymnasium 0.29 support and bug fixes**
+
+Breaking Changes:
+^^^^^^^^^^^^^^^^^
+- Removed Python 3.7 support
+- SB3 now requires PyTorch >= 1.13
+
+New Features:
+^^^^^^^^^^^^^
+- Added Python 3.11 support
+- Added Gymnasium 0.29 support (@pseudo-rnd-thoughts)
+
+`SB3-Contrib`_
+^^^^^^^^^^^^^^
+- Fixed MaskablePPO ignoring ``stats_window_size`` argument
+- Added Python 3.11 support
+
+`RL Zoo`_
+^^^^^^^^^
+- Upgraded to Huggingface-SB3 >= 2.3
+- Added Python 3.11 support
+
+
+Bug Fixes:
+^^^^^^^^^^
+- Relaxed check in logger, that was causing issue on Windows with colorama
+- Fixed off-policy algorithms with continuous float64 actions (see #1145) (@tobirohrer)
+- Fixed ``env_checker.py`` warning messages for out of bounds in complex observation spaces (@Gabo-Tor)
+
+Deprecations:
+^^^^^^^^^^^^^
+
+Others:
+^^^^^^^
+- Updated GitHub issue templates
+- Fix typo in gym patch error message (@lukashass)
+- Refactor ``test_spaces.py`` tests
+
+Documentation:
+^^^^^^^^^^^^^^
+- Fixed callback example (@BertrandDecoster)
+- Fixed policy network example (@kyle-he)
+- Added mobile-env as new community project (@stefanbschneider)
+- Added [DeepNetSlice](https://github.com/AlexPasqua/DeepNetSlice) to community projects (@AlexPasqua)
+
+
+Release 2.0.0 (2023-06-22)
 --------------------------
 
 **Gymnasium support**
@@ -26,13 +75,20 @@ Breaking Changes:
 
 New Features:
 ^^^^^^^^^^^^^
-
+- Added Gymnasium support (Gym 0.21 and 0.26 are supported via the ``shimmy`` package)
 
 `SB3-Contrib`_
 ^^^^^^^^^^^^^^
+- Fixed QRDQN update interval for multi envs
+
 
 `RL Zoo`_
 ^^^^^^^^^
+- Gym 0.26+ patches to continue working with pybullet and TimeLimit wrapper
+- Renamed `CarRacing-v1` to `CarRacing-v2` in hyperparameters
+- Huggingface push to hub now accepts a `--n-timesteps` argument to adjust the length of the video
+- Fixed `record_video` steps (before it was stepping in a closed env)
+- Dropped Gym 0.21 support
 
 Bug Fixes:
 ^^^^^^^^^^
@@ -41,6 +97,8 @@ Bug Fixes:
 - Fixed loading DQN changes ``target_update_interval`` (@tobirohrer)
 - Fixed env checker to properly reset the env before calling ``step()`` when checking
   for ``Inf`` and ``NaN`` (@lutogniew)
+- Fixed HER ``truncate_last_trajectory()`` (@lbergmann1)
+- Fixed HER desired and achieved goal order in reward computation (@JonathanKuelz)
 
 Deprecations:
 ^^^^^^^^^^^^^
@@ -63,13 +121,14 @@ Others:
 - Updated env checker to reflect what subset of Gymnasium is supported and improve GoalEnv checks
 - Improve type annotation of wrappers
 - Tests envs are now checked too
-- Added render test for ``VecEnv``
+- Added render test for ``VecEnv`` and ``VecEnvWrapper``
 - Update issue templates and env info saved with the model
 - Changed ``seed()`` method return type from ``List`` to ``Sequence``
 - Updated env checker doc and requirements for tuple spaces/goal envs
 
 Documentation:
 ^^^^^^^^^^^^^^
+- Added Deep RL Course link to the Deep RL Resources page
 - Added documentation about ``VecEnv`` API vs Gym API
 - Upgraded tutorials to Gymnasium API
 - Make it more explicit when using ``VecEnv`` vs Gym env
@@ -77,6 +136,8 @@ Documentation:
 - Added ``EvalCallback`` example (@sidney-tio)
 - Update custom env documentation
 - Added `pink-noise-rl` to projects page
+- Fix custom policy example, ``ortho_init`` was ignored
+- Added SBX page
 
 
 Release 1.8.0 (2023-04-07)
@@ -1345,8 +1406,8 @@ And all the contributors:
 @eleurent @ac-93 @cove9988 @theDebugger811 @hsuehch @Demetrio92 @thomasgubler @IperGiove @ScheiklP
 @simoninithomas @armandpl @manuel-delverme @Gautam-J @gianlucadecola @buoyancy99 @caburu @xy9485
 @Gregwar @ycheng517 @quantitative-technologies @bcollazo @git-thor @TibiGG @cool-RR @MWeltevrede
-@carlosluis @arjun-kg @tlpss
+@carlosluis @arjun-kg @tlpss @JonathanKuelz @Gabo-Tor
 @Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875
 @anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde @tobirohrer @ZikangXiong
 @DavyMorgan @luizapozzobon @Bonifatius94 @theSquaredError @harveybellini @DavyMorgan @FieteO @jonasreiher @npit @WeberSamuel @troiganto
-@lutogniew
+@lutogniew @lbergmann1 @lukashass @BertrandDecoster @pseudo-rnd-thoughts @stefanbschneider @kyle-he
