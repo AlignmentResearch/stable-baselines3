@@ -460,12 +460,12 @@ class RolloutBuffer(BaseBuffer):
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.observations[self.pos].copy_(th.as_tensor(obs), non_blocking=True)
-        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
-        self.rewards[self.pos].copy_(th.as_tensor(reward), non_blocking=True)
-        self.episode_starts[self.pos].copy_(th.as_tensor(episode_start), non_blocking=True)
-        self.values[self.pos].copy_(th.as_tensor(value).flatten(), non_blocking=True)
-        self.log_probs[self.pos].copy_(th.as_tensor(log_prob), non_blocking=True)
+        self.observations[self.pos].copy_(obs, non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -779,14 +779,14 @@ class DictRolloutBuffer(RolloutBuffer):
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos].copy_(th.as_tensor(obs_), non_blocking=True)
+            self.observations[key][self.pos].copy_(obs_, non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
-        self.rewards[self.pos].copy_(th.as_tensor(reward), non_blocking=True)
-        self.episode_starts[self.pos].copy_(th.as_tensor(episode_start), non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
         self.values[self.pos].copy_(value.flatten(), non_blocking=True)
         self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
