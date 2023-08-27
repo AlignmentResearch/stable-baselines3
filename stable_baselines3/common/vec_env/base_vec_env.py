@@ -7,6 +7,7 @@ import cloudpickle
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 # Define type aliases here to avoid circular import
 # Used when we want to access one or more VecEnv

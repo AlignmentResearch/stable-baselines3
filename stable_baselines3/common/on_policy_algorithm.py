@@ -159,7 +159,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_start()
 
         # Recurrent state from the feature extractor, that will be updated
-        extractor_states = tree_map(lambda x: x.clone(), self._last_extractor_states)
+        # extractor_states = tree_map(lambda x: x.clone(), self._last_extractor_states)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -169,7 +169,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                actions, values, log_probs, extractor_states = self.policy.forward_with_states(obs_tensor, extractor_states, self._last_episode_starts)
+                # actions, values, log_probs, extractor_states = self.policy.forward_with_states(obs_tensor, extractor_states, self._last_episode_starts)
+                actions, values, log_probs = self.policy(obs_tensor)
             actions = actions.cpu().numpy()
 
             # Rescale and perform action
@@ -206,13 +207,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                         with th.no_grad():
                             terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
-                            terminal_lstm_state = (
-                                lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
-                                lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
-                            )
+                            # terminal_lstm_state = (
+                            #     lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
+                            #     lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
+                            # )
                             # terminal_lstm_state = None
-                            episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
-                            terminal_value, _ = self.policy.predict_values_with_states(terminal_obs, terminal_lstm_state, episode_starts)[0]
+                            # episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
+                            # terminal_value, _ = self.policy.predict_values_with_states(terminal_obs, terminal_lstm_state, episode_starts)[0]
                         rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
@@ -222,11 +223,11 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self._last_episode_starts,  # type: ignore[arg-type]
                 values,
                 log_probs,
-                self._last_extractor_states,
+                # self._last_extractor_states,
             )
             self._last_obs = new_obs  # type: ignore[assignment]
             self._last_episode_starts = dones
-            self._last_extractor_states = extractor_states
+            # self._last_extractor_states = extractor_states
 
         with th.no_grad():
             # Compute value for the last timestep

@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Type
 
 import gymnasium as gym
 import numpy as np
+import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs, VecEnvStepReturn
 from stable_baselines3.common.vec_env.patch_gym import _patch_env

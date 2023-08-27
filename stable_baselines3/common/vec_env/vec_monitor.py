@@ -85,8 +85,8 @@ class VecMonitor(VecEnvWrapper):
         for i in range(len(dones)):
             if dones[i]:
                 info = infos[i].copy()
-                episode_return = self.episode_returns[i]
-                episode_length = self.episode_lengths[i]
+                episode_return = self.episode_returns[i].item()
+                episode_length = self.episode_lengths[i].item()
                 episode_info = {"r": episode_return, "l": episode_length, "t": round(time.time() - self.t_start, 6)}
                 for key in self.info_keywords:
                     episode_info[key] = info[key]

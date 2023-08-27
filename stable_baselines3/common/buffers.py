@@ -355,14 +355,14 @@ class RolloutBuffer(BaseBuffer):
     :param n_envs: Number of parallel environments
     """
 
-    observations: np.ndarray
-    actions: np.ndarray
-    rewards: np.ndarray
-    advantages: np.ndarray
-    returns: np.ndarray
-    episode_starts: np.ndarray
-    log_probs: np.ndarray
-    values: np.ndarray
+    observations: th.Tensor
+    actions: th.Tensor
+    rewards: th.Tensor
+    advantages: th.Tensor
+    returns: th.Tensor
+    episode_starts: th.Tensor
+    log_probs: th.Tensor
+    values: th.Tensor
 
     def __init__(
         self,
@@ -381,14 +381,14 @@ class RolloutBuffer(BaseBuffer):
         self.reset()
 
     def reset(self) -> None:
-        self.observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=np.float32)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.observations = th.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=th.float32)
+        self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
         self.generator_ready = False
         super().reset()
 
@@ -431,10 +431,10 @@ class RolloutBuffer(BaseBuffer):
 
     def add(
         self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
+        obs: th.Tensor,
+        action: th.Tensor,
+        reward: th.Tensor,
+        episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
     ) -> None:
@@ -460,12 +460,12 @@ class RolloutBuffer(BaseBuffer):
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.observations[self.pos] = np.array(obs).copy()
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.episode_starts[self.pos] = np.array(episode_start).copy()
-        self.values[self.pos] = value.clone().cpu().numpy().flatten()
-        self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        self.observations[self.pos].copy_(th.as_tensor(obs), non_blocking=True)
+        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
+        self.rewards[self.pos].copy_(th.as_tensor(reward), non_blocking=True)
+        self.episode_starts[self.pos].copy_(th.as_tensor(episode_start), non_blocking=True)
+        self.values[self.pos].copy_(th.as_tensor(value).flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(th.as_tensor(log_prob), non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -779,16 +779,16 @@ class DictRolloutBuffer(RolloutBuffer):
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos] = obs_
+            self.observations[key][self.pos].copy_(th.as_tensor(obs_), non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos] = th.as_tensor(action)
-        self.rewards[self.pos] = reward
-        self.episode_starts[self.pos] = th.as_tensor(episode_start)
-        self.values[self.pos] = value.flatten()
-        self.log_probs[self.pos] = log_prob
+        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
+        self.rewards[self.pos].copy_(th.as_tensor(reward), non_blocking=True)
+        self.episode_starts[self.pos].copy_(th.as_tensor(episode_start), non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -813,7 +813,6 @@ class DictRolloutBuffer(RolloutBuffer):
         if batch_size is None:
             batch_size = self.buffer_size * self.n_envs
 
-        assert batch_size == self.buffer_size * self.n_envs
         if batch_size == self.buffer_size * self.n_envs:
             yield self._get_samples(slice(None))
         else:
