@@ -598,7 +598,7 @@ class StopTrainingOnMaxEpisodes(BaseCallback):
     def _on_step(self) -> bool:
         # Check that the `dones` local variable is defined
         assert "dones" in self.locals, "`dones` variable is not defined, please check your code next to `callback.on_step()`"
-        self.n_episodes += np.sum(self.locals["dones"]).item()
+        self.n_episodes += self.locals["dones"].sum().item()
 
         continue_training = self.n_episodes < self._total_max_episodes
 

@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractproperty
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
 
 import cloudpickle
@@ -8,19 +8,23 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 import torch as th
+import math
 
 # Define type aliases here to avoid circular import
 # Used when we want to access one or more VecEnv
 VecEnvIndices = Union[None, int, Iterable[int]]
 # VecEnvObs is what is returned by the reset() method
 # it contains the observation for each env
-VecEnvObs = Union[np.ndarray, Dict[str, np.ndarray], Tuple[np.ndarray, ...]]
+VecEnvObs = Union[th.Tensor, Dict[str, th.Tensor], Tuple[th.Tensor, ...]]
 # VecEnvStepReturn is what is returned by the step() method
 # it contains the observation, reward, done, info for each env
-VecEnvStepReturn = Tuple[VecEnvObs, np.ndarray, np.ndarray, List[Dict]]
+VecEnvStepReturn = Tuple[VecEnvObs, th.Tensor, th.Tensor, List[Dict]]
+
+# EnvObs is like VecEnvObs but for a single, original gymnasiu
+EnvObs = Union[np.ndarray, Dict[str, np.ndarray], Tuple[np.ndarray, ...]]
 
 
-def tile_images(images_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cover
+def tile_images(images_nhwc: Sequence[th.Tensor]) -> th.Tensor:  # pragma: no cover
     """
     Tile N images into one big PxQ image
     (P,Q) are chosen to be as close as possible, and if N
@@ -30,13 +34,13 @@ def tile_images(images_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no 
         n = batch index, h = height, w = width, c = channel
     :return: img_HWc, ndim=3
     """
-    img_nhwc = np.asarray(images_nhwc)
+    img_nhwc = th.as_tensor(images_nhwc)
     n_images, height, width, n_channels = img_nhwc.shape
     # new_height was named H before
-    new_height = int(np.ceil(np.sqrt(n_images)))
+    new_height = int(math.ceil(math.sqrt(n_images)))
     # new_width was named W before
-    new_width = int(np.ceil(float(n_images) / new_height))
-    img_nhwc = np.array(list(img_nhwc) + [img_nhwc[0] * 0 for _ in range(n_images, new_height * new_width)])
+    new_width = int(math.ceil(float(n_images) / new_height))
+    img_nhwc = th.nn.functional.pad(img_nhwc, pad=(max(0, new_height * new_width - n_images), 0, 0, 0))
     # img_HWhwc
     out_image = img_nhwc.reshape((new_height, new_width, height, width, n_channels))
     # img_HhWwc
@@ -90,6 +94,13 @@ class VecEnv(ABC):
 
         self.metadata = {"render_modes": render_modes}
 
+    @abstractproperty
+    def device(self) -> th.device:
+        """
+        The device this module is on.
+        """
+        pass
+
     def _reset_seeds(self) -> None:
         """
         Reset the seeds that are going to be used at the next reset.
@@ -111,7 +122,7 @@ class VecEnv(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def step_async(self, actions: np.ndarray) -> None:
+    def step_async(self, actions: th.Tensor) -> None:
         """
         Tell all the environments to start taking a step
         with the given actions.
@@ -187,7 +198,7 @@ class VecEnv(ABC):
         """
         raise NotImplementedError()
 
-    def step(self, actions: np.ndarray) -> VecEnvStepReturn:
+    def step(self, actions: th.Tensor) -> VecEnvStepReturn:
         """
         Step the environments with the given action
 
@@ -197,13 +208,13 @@ class VecEnv(ABC):
         self.step_async(actions)
         return self.step_wait()
 
-    def get_images(self) -> Sequence[Optional[np.ndarray]]:
+    def get_images(self) -> Sequence[Optional[th.Tensor]]:
         """
         Return RGB images from each environment when available
         """
         raise NotImplementedError
 
-    def render(self, mode: Optional[str] = None) -> Optional[np.ndarray]:
+    def render(self, mode: Optional[str] = None) -> Optional[th.Tensor]:
         """
         Gym environment rendering
 
@@ -341,8 +352,12 @@ class VecEnvWrapper(VecEnv):
         )
         self.class_attributes = dict(inspect.getmembers(self.__class__))
 
-    def step_async(self, actions: np.ndarray) -> None:
+    def step_async(self, actions: th.Tensor) -> None:
         self.venv.step_async(actions)
+
+    @property
+    def device(self) -> th.device:
+        return self.venv.device
 
     @abstractmethod
     def reset(self) -> VecEnvObs:
@@ -358,10 +373,10 @@ class VecEnvWrapper(VecEnv):
     def close(self) -> None:
         return self.venv.close()
 
-    def render(self, mode: Optional[str] = None) -> Optional[np.ndarray]:
+    def render(self, mode: Optional[str] = None) -> Optional[th.Tensor]:
         return self.venv.render(mode=mode)
 
-    def get_images(self) -> Sequence[Optional[np.ndarray]]:
+    def get_images(self) -> Sequence[Optional[th.Tensor]]:
         return self.venv.get_images()
 
     def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:

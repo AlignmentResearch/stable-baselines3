@@ -14,8 +14,9 @@ from stable_baselines3.common.type_aliases import (
     RolloutBufferSamples,
     TensorIndex,
 )
-from stable_baselines3.common.utils import get_device
+from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env.util import as_torch_dtype
 
 try:
     # Check memory used by replay buffer when possible
@@ -57,7 +58,7 @@ class BaseBuffer(ABC):
         self.n_envs = n_envs
 
     @staticmethod
-    def swap_and_flatten(arr: np.ndarray) -> np.ndarray:
+    def swap_and_flatten(arr: th.Tensor) -> th.Tensor:
         """
         Swap and then flatten axes 0 (buffer_size) and 1 (n_envs)
         to convert shape from [n_steps, n_envs, ...] (when ... is the shape of the features)
@@ -110,12 +111,12 @@ class BaseBuffer(ABC):
         :return:
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        batch_inds = np.random.randint(0, upper_bound, size=batch_size)
+        batch_inds = th.randint(0, upper_bound, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
     @abstractmethod
     def _get_samples(
-        self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None
+        self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None
     ) -> Union[ReplayBufferSamples, RolloutBufferSamples]:
         """
         :param batch_inds:
@@ -124,7 +125,7 @@ class BaseBuffer(ABC):
         """
         raise NotImplementedError()
 
-    def to_torch(self, array: np.ndarray, copy: bool = True) -> th.Tensor:
+    def to_torch(self, array: th.Tensor, copy: bool = True) -> th.Tensor:
         """
         Convert a numpy array to a PyTorch tensor.
         Note: it copies the data by default
@@ -140,17 +141,17 @@ class BaseBuffer(ABC):
 
     @staticmethod
     def _normalize_obs(
-        obs: Union[np.ndarray, Dict[str, np.ndarray]],
+        obs: Union[th.Tensor, Dict[str, th.Tensor]],
         env: Optional[VecNormalize] = None,
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    ) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         if env is not None:
             return env.normalize_obs(obs)
         return obs
 
     @staticmethod
-    def _normalize_reward(reward: np.ndarray, env: Optional[VecNormalize] = None) -> np.ndarray:
+    def _normalize_reward(reward: th.Tensor, env: Optional[VecNormalize] = None) -> th.Tensor:
         if env is not None:
-            return env.normalize_reward(reward).astype(np.float32)
+            return env.normalize_reward(reward).to(th.float32)
         return reward
 
 
@@ -202,30 +203,30 @@ class ReplayBuffer(BaseBuffer):
             )
         self.optimize_memory_usage = optimize_memory_usage
 
-        self.observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=observation_space.dtype)
+        self.observations = th.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=as_torch_dtype(observation_space.dtype))
 
         if optimize_memory_usage:
             # `observations` contains also the next observation
             self.next_observations = None
         else:
-            self.next_observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=observation_space.dtype)
+            self.next_observations = th.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=as_torch_dtype(observation_space.dtype))
 
-        self.actions = np.zeros(
+        self.actions = th.zeros(
             (self.buffer_size, self.n_envs, self.action_dim), dtype=self._maybe_cast_dtype(action_space.dtype)
         )
 
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.dones = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
         # Handle timeouts termination properly if needed
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
-        self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.timeouts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
 
         if psutil is not None:
-            total_memory_usage = self.observations.nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
+            total_memory_usage = nbytes(self.observations) + nbytes(self.actions) + nbytes(self.rewards) + nbytes(self.dones)
 
             if self.next_observations is not None:
-                total_memory_usage += self.next_observations.nbytes
+                total_memory_usage += nbytes(self.next_observations)
 
             if total_memory_usage > mem_available:
                 # Convert to GB
@@ -238,11 +239,11 @@ class ReplayBuffer(BaseBuffer):
 
     def add(
         self,
-        obs: np.ndarray,
-        next_obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        obs: th.Tensor,
+        next_obs: th.Tensor,
+        action: th.Tensor,
+        reward: th.Tensor,
+        done: th.Tensor,
         infos: List[Dict[str, Any]],
     ) -> None:
         # Reshape needed when using multiple envs with discrete observations
@@ -255,19 +256,19 @@ class ReplayBuffer(BaseBuffer):
         action = action.reshape((self.n_envs, self.action_dim))
 
         # Copy to avoid modification by reference
-        self.observations[self.pos] = np.array(obs).copy()
+        self.observations[self.pos].copy_(obs)
 
         if self.optimize_memory_usage:
-            self.observations[(self.pos + 1) % self.buffer_size] = np.array(next_obs).copy()
+            self.observations[(self.pos + 1) % self.buffer_size].copy_(next_obs)
         else:
-            self.next_observations[self.pos] = np.array(next_obs).copy()
+            self.next_observations[self.pos].copy_(next_obs)
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.dones[self.pos] = np.array(done).copy()
+        self.actions[self.pos].copy_(action)
+        self.rewards[self.pos].copy_(reward)
+        self.dones[self.pos].copy_(done)
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
+            self.timeouts[self.pos] = th.tensor([info.get("TimeLimit.truncated", False) for info in infos], dtype=th.bool)
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -291,14 +292,14 @@ class ReplayBuffer(BaseBuffer):
         # Do not sample the element with index `self.pos` as the transitions is invalid
         # (we use only one array to store `obs` and `next_obs`)
         if self.full:
-            batch_inds = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_inds = (th.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
         else:
-            batch_inds = np.random.randint(0, self.pos, size=batch_size)
+            batch_inds = th.randint(0, self.pos, size=batch_size)
         return self._get_samples(batch_inds, env=env)
 
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+    def _get_samples(self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
-        env_indices = np.random.randint(0, high=self.n_envs, size=(len(batch_inds),))
+        env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),))
 
         if self.optimize_memory_usage:
             next_obs = self._normalize_obs(self.observations[(batch_inds + 1) % self.buffer_size, env_indices, :], env)
@@ -317,7 +318,7 @@ class ReplayBuffer(BaseBuffer):
         return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
 
     @staticmethod
-    def _maybe_cast_dtype(dtype: np.typing.DTypeLike) -> np.typing.DTypeLike:
+    def _maybe_cast_dtype(dtype: Union[np.typing.DTypeLike, th.dtype]) -> th.dtype:
         """
         Cast `np.float64` action datatype to `np.float32`,
         keep the others dtype unchanged.
@@ -327,8 +328,9 @@ class ReplayBuffer(BaseBuffer):
         :return: ``np.float32`` if the dtype was float64,
             the original dtype otherwise.
         """
-        if dtype == np.float64:
-            return np.float32
+        dtype = as_torch_dtype(dtype)
+        if dtype == th.float64:
+            return th.float32
         return dtype
 
 
@@ -392,7 +394,7 @@ class RolloutBuffer(BaseBuffer):
         self.generator_ready = False
         super().reset()
 
-    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
+    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: th.Tensor) -> None:
         """
         Post-processing step: compute the lambda-return (TD(lambda) estimate)
         and GAE(lambda) advantage.
@@ -499,7 +501,7 @@ class RolloutBuffer(BaseBuffer):
 
     def _get_samples(
         self,
-        batch_inds: np.ndarray,
+        batch_inds: th.Tensor,
         env: Optional[VecNormalize] = None,
     ) -> RolloutBufferSamples:  # type: ignore[signature-mismatch] #FIXME
         data = (
@@ -555,35 +557,35 @@ class DictReplayBuffer(ReplayBuffer):
         self.optimize_memory_usage = optimize_memory_usage
 
         self.observations = {
-            key: np.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=observation_space[key].dtype)
+            key: th.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=as_torch_dtype(observation_space[key].dtype))
             for key, _obs_shape in self.obs_shape.items()
         }
         self.next_observations = {
-            key: np.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=observation_space[key].dtype)
+            key: th.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=as_torch_dtype(observation_space[key].dtype))
             for key, _obs_shape in self.obs_shape.items()
         }
 
-        self.actions = np.zeros(
+        self.actions = th.zeros(
             (self.buffer_size, self.n_envs, self.action_dim), dtype=self._maybe_cast_dtype(action_space.dtype)
         )
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
+        self.dones = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
 
         # Handle timeouts termination properly if needed
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
-        self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.timeouts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
 
         if psutil is not None:
             obs_nbytes = 0
             for _, obs in self.observations.items():
-                obs_nbytes += obs.nbytes
+                obs_nbytes += nbytes(obs)
 
-            total_memory_usage = obs_nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
+            total_memory_usage = obs_nbytes + nbytes(self.actions) + nbytes(self.rewards) + nbytes(self.dones)
             if self.next_observations is not None:
                 next_obs_nbytes = 0
                 for _, obs in self.observations.items():
-                    next_obs_nbytes += obs.nbytes
+                    next_obs_nbytes += nbytes(obs)
                 total_memory_usage += next_obs_nbytes
 
             if total_memory_usage > mem_available:
@@ -597,11 +599,11 @@ class DictReplayBuffer(ReplayBuffer):
 
     def add(
         self,
-        obs: Dict[str, np.ndarray],
-        next_obs: Dict[str, np.ndarray],
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        obs: Dict[str, th.Tensor],
+        next_obs: Dict[str, th.Tensor],
+        action: th.Tensor,
+        reward: th.Tensor,
+        done: th.Tensor,
         infos: List[Dict[str, Any]],
     ) -> None:  # pytype: disable=signature-mismatch
         # Copy to avoid modification by reference
@@ -610,22 +612,22 @@ class DictReplayBuffer(ReplayBuffer):
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs[key] = obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos] = np.array(obs[key])
+            self.observations[key][self.pos].copy_(obs[key])
 
         for key in self.next_observations.keys():
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 next_obs[key] = next_obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.next_observations[key][self.pos] = np.array(next_obs[key]).copy()
+            self.next_observations[key][self.pos].copy_(next_obs[key])
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.dones[self.pos] = np.array(done).copy()
+        self.actions[self.pos].copy_(action)
+        self.rewards[self.pos].copy_(reward)
+        self.dones[self.pos].copy_(done)
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
+            self.timeouts[self.pos].copy_(th.tensor([info.get("TimeLimit.truncated", False) for info in infos], dtype=th.bool))
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -649,7 +651,7 @@ class DictReplayBuffer(ReplayBuffer):
 
     def _get_samples(
         self,
-        batch_inds: np.ndarray,
+        batch_inds: th.Tensor,
         env: Optional[VecNormalize] = None,
     ) -> DictReplayBufferSamples:  # type: ignore[signature-mismatch] #FIXME:
         # Sample randomly the env idx
@@ -703,7 +705,7 @@ class DictRolloutBuffer(RolloutBuffer):
     :param n_envs: Number of parallel environments
     """
 
-    observations: Dict[str, np.ndarray]
+    observations: Dict[str, th.Tensor]
 
     def __init__(
         self,

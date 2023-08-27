@@ -423,7 +423,7 @@ class BaseAlgorithm(ABC):
             # pytype: disable=annotation-type-mismatch
             self._last_obs = self.env.reset()  # type: ignore[assignment]
             # pytype: enable=annotation-type-mismatch
-            self._last_episode_starts = np.ones((self.env.num_envs,), dtype=bool)
+            self._last_episode_starts = th.ones((self.env.num_envs,), dtype=th.bool)
             # Retrieve unnormalized observation for saving into the buffer
             if self._vec_normalize_env is not None:
                 self._last_original_obs = self._vec_normalize_env.get_original_obs()

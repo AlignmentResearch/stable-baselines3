@@ -24,6 +24,14 @@ except ImportError:
 from stable_baselines3.common.logger import Logger, configure
 from stable_baselines3.common.type_aliases import GymEnv, Schedule, TensorDict, TrainFreq, TrainFrequencyUnit
 
+def nbytes(t: th.Tensor) -> int:
+    """
+    Get the number of bytes of a PyTorch tensor.
+
+    :param t: PyTorch tensor
+    :return: the number of bytes of the tensor
+    """
+    return t.element_size() * t.numel()
 
 def set_random_seed(seed: int, using_cuda: bool = False) -> None:
     """
@@ -479,7 +487,7 @@ def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.devi
     :param device: PyTorch device
     :return: PyTorch tensor of the observation on a desired device.
     """
-    if isinstance(obs, np.ndarray):
+    if isinstance(obs, (th.Tensor, np.ndarray)):
         return th.as_tensor(obs, device=device)
     elif isinstance(obs, dict):
         return {key: th.as_tensor(_obs, device=device) for (key, _obs) in obs.items()}

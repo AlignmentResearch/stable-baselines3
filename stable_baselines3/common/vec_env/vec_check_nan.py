@@ -3,6 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn, VecEnvWrapper
 
@@ -26,12 +27,12 @@ class VecCheckNan(VecEnvWrapper):
 
         self._user_warned = False
 
-        self._actions: np.ndarray
+        self._actions: th.Tensor
         self._observations: VecEnvObs
         if isinstance(venv.action_space, spaces.Dict):
             raise NotImplementedError("VecCheckNan doesn't support dict action spaces")
 
-    def step_async(self, actions: np.ndarray) -> None:
+    def step_async(self, actions: th.Tensor) -> None:
         self._check_val(event="step_async", actions=actions)
         self._actions = actions
         self.venv.step_async(actions)
@@ -48,7 +49,7 @@ class VecCheckNan(VecEnvWrapper):
         self._observations = observations
         return observations
 
-    def check_array_value(self, name: str, value: np.ndarray) -> List[Tuple[str, str]]:
+    def check_array_value(self, name: str, value: th.Tensor) -> List[Tuple[str, str]]:
         """
         Check for inf and NaN for a single numpy array.
 
@@ -57,8 +58,8 @@ class VecCheckNan(VecEnvWrapper):
         :return: A list of issues found.
         """
         found = []
-        has_nan = np.any(np.isnan(value))
-        has_inf = self.check_inf and np.any(np.isinf(value))
+        has_nan = th.any(th.isnan(value))
+        has_inf = self.check_inf and th.any(th.isinf(value))
         if has_inf:
             found.append((name, "inf"))
         if has_nan:
@@ -72,8 +73,8 @@ class VecCheckNan(VecEnvWrapper):
 
         found = []
         for name, value in kwargs.items():
-            if isinstance(value, (np.ndarray, list)):
-                found += self.check_array_value(name, np.asarray(value))
+            if isinstance(value, (th.Tensor, list)):
+                found += self.check_array_value(name, th.as_tensor(value))
             elif isinstance(value, dict):
                 for inner_name, inner_val in value.items():
                     found += self.check_array_value(f"{name}.{inner_name}", inner_val)

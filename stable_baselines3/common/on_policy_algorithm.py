@@ -171,13 +171,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 # actions, values, log_probs, extractor_states = self.policy.forward_with_states(obs_tensor, extractor_states, self._last_episode_starts)
                 actions, values, log_probs = self.policy(obs_tensor)
-            actions = actions.cpu().numpy()
+            actions = actions.to(env.device)
 
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
             if isinstance(self.action_space, spaces.Box):
-                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 

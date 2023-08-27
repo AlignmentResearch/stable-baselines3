@@ -1,7 +1,6 @@
 from typing import Tuple
 
-import numpy as np
-
+import torch as th
 
 class RunningMeanStd:
     def __init__(self, epsilon: float = 1e-4, shape: Tuple[int, ...] = ()):
@@ -12,8 +11,8 @@ class RunningMeanStd:
         :param epsilon: helps with arithmetic issues
         :param shape: the shape of the data stream's output
         """
-        self.mean = np.zeros(shape, np.float64)
-        self.var = np.ones(shape, np.float64)
+        self.mean = th.zeros(shape, dtype=th.float64)
+        self.var = th.ones(shape, dtype=th.float64)
         self.count = epsilon
 
     def copy(self) -> "RunningMeanStd":
@@ -34,20 +33,20 @@ class RunningMeanStd:
         """
         self.update_from_moments(other.mean, other.var, other.count)
 
-    def update(self, arr: np.ndarray) -> None:
-        batch_mean = np.mean(arr, axis=0)
-        batch_var = np.var(arr, axis=0)
+    def update(self, arr: th.Tensor) -> None:
+        batch_mean = th.mean(arr, axis=0)
+        batch_var = th.var(arr, axis=0, unbiased=False)
         batch_count = arr.shape[0]
         self.update_from_moments(batch_mean, batch_var, batch_count)
 
-    def update_from_moments(self, batch_mean: np.ndarray, batch_var: np.ndarray, batch_count: float) -> None:
+    def update_from_moments(self, batch_mean: th.Tensor, batch_var: th.Tensor, batch_count: float) -> None:
         delta = batch_mean - self.mean
         tot_count = self.count + batch_count
 
         new_mean = self.mean + delta * batch_count / tot_count
         m_a = self.var * self.count
         m_b = batch_var * batch_count
-        m_2 = m_a + m_b + np.square(delta) * self.count * batch_count / (self.count + batch_count)
+        m_2 = m_a + m_b + th.square(delta) * self.count * batch_count / (self.count + batch_count)
         new_var = m_2 / (self.count + batch_count)
 
         new_count = batch_count + self.count

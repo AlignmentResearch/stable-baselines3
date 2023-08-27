@@ -2,33 +2,67 @@
 Helpers for dealing with vectorized environments.
 """
 from collections import OrderedDict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common.preprocessing import check_for_nested_spaces
-from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs
+from stable_baselines3.common.vec_env.base_vec_env import EnvObs, VecEnvObs
 
 
-def copy_obs_dict(obs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def as_torch_dtype(dtype: Union[th.dtype, np.dtype]) -> th.dtype:
     """
-    Deep-copy a dict of numpy arrays.
+    Convert a numpy dtype to a PyTorch dtype, if it is not already one.
 
-    :param obs: a dict of numpy arrays.
-    :return: a dict of copied numpy arrays.
+    :param dtype: Numpy dtype
+    :return: PyTorch dtype
+    """
+    if isinstance(dtype, th.dtype):
+        return dtype
+    return getattr(th, np.dtype(dtype).name)
+
+
+def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
+    if isinstance(obs, dict):
+        return {k: th.as_tensor(v) for k, v in obs.items()}
+    elif isinstance(obs, tuple):
+        return tuple(th.as_tensor(v) for v in obs)
+    else:
+        return th.as_tensor(obs)
+
+
+def clone_obs(obs: VecEnvObs) -> VecEnvObs:
+    """
+    Deep-copy a VecEnvObs
+    """
+    if isinstance(obs, dict):
+        return OrderedDict([(k, v.clone()) for k, v in obs.items()])
+    elif isinstance(obs, tuple):
+        return tuple(v.clone() for v in obs)
+    else:
+        return obs.clone()
+
+
+def copy_obs_dict(obs: Dict[str, th.Tensor]) -> Dict[str, th.Tensor]:
+    """
+    Deep-copy a dict of torch Tensors.
+
+    :param obs: a dict of torch Tensors.
+    :return: a dict of copied torch Tensors.
     """
     assert isinstance(obs, OrderedDict), f"unexpected type for observations '{type(obs)}'"
-    return OrderedDict([(k, np.copy(v)) for k, v in obs.items()])
+    return OrderedDict([(k, v.clone()) for k, v in obs.items()])
 
 
-def dict_to_obs(obs_space: spaces.Space, obs_dict: Dict[Any, np.ndarray]) -> VecEnvObs:
+def dict_to_obs(obs_space: spaces.Space, obs_dict: Dict[Any, th.Tensor]) -> VecEnvObs:
     """
     Convert an internal representation raw_obs into the appropriate type
     specified by space.
 
     :param obs_space: an observation space.
-    :param obs_dict: a dict of numpy arrays.
+    :param obs_dict: a dict of torch Tensors.
     :return: returns an observation of the same type as space.
         If space is Dict, function is identity; if space is Tuple, converts dict to Tuple;
         otherwise, space is unstructured and returns the value raw_obs[None].
@@ -43,7 +77,7 @@ def dict_to_obs(obs_space: spaces.Space, obs_dict: Dict[Any, np.ndarray]) -> Vec
         return obs_dict[None]
 
 
-def obs_space_info(obs_space: spaces.Space) -> Tuple[List[str], Dict[Any, Tuple[int, ...]], Dict[Any, np.dtype]]:
+def obs_space_info(obs_space: spaces.Space) -> Tuple[List[str], Dict[Any, Tuple[int, ...]], Dict[Any, th.dtype]]:
     """
     Get dict-structured information about a gym.Space.
 
@@ -72,5 +106,5 @@ def obs_space_info(obs_space: spaces.Space) -> Tuple[List[str], Dict[Any, Tuple[
     for key, box in subspaces.items():
         keys.append(key)
         shapes[key] = box.shape
-        dtypes[key] = box.dtype
+        dtypes[key] = as_torch_dtype(box.dtype)
     return keys, shapes, dtypes
