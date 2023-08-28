@@ -263,7 +263,8 @@ class VecEnv(ABC):
                 # Display it using OpenCV
                 import cv2  # pytype:disable=import-error
 
-                cv2.imshow("vecenv", bigimg[:, :, ::-1])
+                assert bigimg.device == th.device("cpu")
+                cv2.imshow("vecenv", bigimg.numpy()[:, :, ::-1])
                 cv2.waitKey(1)
             else:
                 return bigimg
