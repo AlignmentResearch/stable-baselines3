@@ -40,7 +40,7 @@ class CustomGymEnv(gym.Env):
         return self.state, {}
 
     def step(self, action):
-        reward = th.rand(()).item()
+        reward = float(np.random.rand())
         self._choose_next_state()
         self.current_step += 1
         terminated = False
@@ -56,7 +56,7 @@ class CustomGymEnv(gym.Env):
 
     def seed(self, seed=None):
         if seed is not None:
-            th.manual_seed(seed)
+            np.random.seed(seed)
             self.observation_space.seed(seed)
 
     @staticmethod
