@@ -718,7 +718,7 @@ def test_load_invalid_object(tmp_path):
     base64_object = base64.b64decode(serialization.encode())
     assert b"CodeType" in base64_object, "Object to corrupt does not exist"
     new_bytes = base64_object.replace(b"CodeType", b"CodeTyps")
-    assert b"CodeTyps" in base64_object, "Corruption failed"
+    assert b"CodeTyps" in new_bytes, "Corruption failed"
     base64_encoded = base64.b64encode(new_bytes).decode()
     json_data["learning_rate"][":serialized:"] = base64_encoded
     serialized_data = json.dumps(json_data, indent=4)
