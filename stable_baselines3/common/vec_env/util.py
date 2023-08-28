@@ -16,12 +16,24 @@ def as_torch_dtype(dtype: Union[th.dtype, np.dtype]) -> th.dtype:
     """
     Convert a numpy dtype to a PyTorch dtype, if it is not already one.
 
-    :param dtype: Numpy dtype
+    :param dtype: Numpy or Pytorch dtype
     :return: PyTorch dtype
     """
     if isinstance(dtype, th.dtype):
         return dtype
     return getattr(th, np.dtype(dtype).name)
+
+
+def as_numpy_dtype(dtype: Union[th.dtype, np.dtype]) -> np.dtype:
+    """
+    Convert a PyTorch dtype to a numpy dtype, if it is not already one.
+
+    :param dtype: Pytorch or Numpy dtype
+    :return: Numpy dtype
+    """
+    if isinstance(dtype, np.dtype):
+        return dtype
+    return np.dtype(str(dtype).removeprefix("torch."))
 
 
 def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
@@ -32,13 +44,14 @@ def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
     else:
         return th.as_tensor(obs)
 
+
 def obs_as_np(obs: Union[EnvObs, VecEnvObs]) -> EnvObs:
     if isinstance(obs, dict):
         return {k: v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for k, v in obs.items()}
     elif isinstance(obs, tuple):
         return tuple(v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for v in obs)
     else:
-        return obs.detach().cpu().numpy()  if isinstance(obs, th.Tensor) else obs
+        return obs.detach().cpu().numpy() if isinstance(obs, th.Tensor) else obs
 
 
 def clone_obs(obs: VecEnvObs) -> VecEnvObs:
