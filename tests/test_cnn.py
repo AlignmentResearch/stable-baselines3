@@ -249,8 +249,10 @@ def test_channel_first_env(tmp_path):
     model = A2C("CnnPolicy", env, n_steps=100).learn(250)
 
     assert not is_vecenv_wrapped(model.get_env(), VecTransposeImage)
+    # Need to use the vec_env
+    env = model.get_env()
 
-    obs, _ = env.reset()
+    obs = env.reset()
 
     action, _ = model.predict(obs, deterministic=True)
 

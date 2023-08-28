@@ -243,10 +243,11 @@ class BaseModel(nn.Module):
             nonlocal vectorized_env
 
             assert isinstance(obs, th.Tensor)
-            vectorized_env = vectorized_env or is_vectorized_observation(obs, obs_space)
-
             # If image, transpose to (N)CHW
             obs = maybe_transpose(obs, obs_space)
+
+            # We `maybe_transpose` before this so that obs and obs_space match.
+            vectorized_env = vectorized_env or is_vectorized_observation(obs, obs_space)
             # Add batch dimension if needed
             obs = obs.reshape((-1, *obs_space.shape))
             return obs
