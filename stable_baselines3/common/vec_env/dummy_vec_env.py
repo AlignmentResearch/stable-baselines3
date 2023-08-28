@@ -50,10 +50,6 @@ class DummyVecEnv(VecEnv):
         self.buf_infos: List[Dict[str, Any]] = [{} for _ in range(self.num_envs)]
         self.metadata = env.metadata
 
-    @property
-    def device(self) -> th.device:
-        return th.device("cpu")
-
     def step_async(self, actions: th.Tensor) -> None:
         self.actions = actions
 

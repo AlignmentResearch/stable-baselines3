@@ -277,7 +277,7 @@ class HerReplayBuffer(DictReplayBuffer):
             dones=self.to_torch(
                 self.dones[batch_indices, env_indices] * (1 - self.timeouts[batch_indices, env_indices])
             ).reshape(-1, 1),
-            rewards=self.to_torch(self._normalize_reward(self.rewards[batch_indices, env_indices].reshape(-1, 1), env)),
+            rewards=self._normalize_reward(self.to_torch(self.rewards[batch_indices, env_indices].reshape(-1, 1), env)),
         )
 
     def _get_virtual_samples(
@@ -342,7 +342,7 @@ class HerReplayBuffer(DictReplayBuffer):
             dones=self.to_torch(
                 self.dones[batch_indices, env_indices] * (1 - self.timeouts[batch_indices, env_indices])
             ).reshape(-1, 1),
-            rewards=self.to_torch(self._normalize_reward(rewards.reshape(-1, 1), env)),
+            rewards=self._normalize_reward(self.to_torch(rewards.reshape(-1, 1), env)),
         )
 
     def _sample_goals(self, batch_indices: np.ndarray, env_indices: np.ndarray) -> np.ndarray:

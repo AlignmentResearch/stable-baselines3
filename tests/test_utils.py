@@ -104,7 +104,7 @@ def test_make_atari_env(
         assert new_frame_number - frame_number == frame_skip
     assert new_obs.shape == expected_shape
     if clip_reward:
-        assert np.max(np.abs(reward)) < 1.0
+        assert th.max(th.abs(reward)) < 1.0
 
 
 def test_vec_env_kwargs():

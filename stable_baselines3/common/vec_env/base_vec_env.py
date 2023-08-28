@@ -94,12 +94,12 @@ class VecEnv(ABC):
 
         self.metadata = {"render_modes": render_modes}
 
-    @abstractproperty
+    @property
     def device(self) -> th.device:
         """
-        The device this module is on.
+        The device of this vectorized environment's observations, actions, rewards and dones.
         """
-        pass
+        return th.device("cpu")
 
     def _reset_seeds(self) -> None:
         """

@@ -64,17 +64,13 @@ class VecMonitor(VecEnvWrapper):
             )
 
         self.info_keywords = info_keywords
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.venv.device)
+        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.venv.device)
 
     def reset(self) -> VecEnvObs:
         obs = self.venv.reset()
-        if isinstance(obs, dict):
-            device = next(iter(obs.values())).device
-        else:
-            device = obs.device
-        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=device)
-        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=device)
+        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.venv.device)
+        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.venv.device)
         return obs
 
     def step_wait(self) -> VecEnvStepReturn:

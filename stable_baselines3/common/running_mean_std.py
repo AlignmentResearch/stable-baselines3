@@ -20,8 +20,8 @@ class RunningMeanStd:
         :return: Return a copy of the current object.
         """
         new_object = RunningMeanStd(shape=self.mean.shape)
-        new_object.mean = self.mean.copy()
-        new_object.var = self.var.copy()
+        new_object.mean = self.mean.clone()
+        new_object.var = self.var.clone()
         new_object.count = float(self.count)
         return new_object
 

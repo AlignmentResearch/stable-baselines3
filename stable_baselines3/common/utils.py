@@ -54,7 +54,7 @@ def set_random_seed(seed: int, using_cuda: bool = False) -> None:
 
 
 # From stable baselines
-def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+def explained_variance(y_pred: th.Tensor, y_true: th.Tensor, unbiased: bool=True) -> th.Tensor:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -66,11 +66,13 @@ def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
 
     :param y_pred: the prediction
     :param y_true: the expected value
-    :return: explained variance of ypred and y
+    :param unbiased: compute unbiased variances with Bessel's correction. (The resulting estimation of the explained
+        variance is still biased.)
+    :return: explained variance of y_pred and y
     """
     assert y_true.ndim == 1 and y_pred.ndim == 1
-    var_y = th.var(y_true)
-    return th.nan if var_y == 0 else 1 - th.var(y_true - y_pred) / var_y
+    var_y = th.var(y_true, unbiased=unbiased)
+    return th.as_tensor(th.nan, device=var_y.device) if var_y == 0 else 1 - th.var(y_true - y_pred, unbiased=unbiased) / var_y
 
 
 def update_learning_rate(optimizer: th.optim.Optimizer, learning_rate: float) -> None:

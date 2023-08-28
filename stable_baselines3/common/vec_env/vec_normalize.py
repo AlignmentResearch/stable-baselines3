@@ -224,7 +224,8 @@ class VecNormalize(VecEnvWrapper):
         :param obs_rms: associated statistics
         :return: unnormalized observation
         """
-        return (obs * th.sqrt(obs_rms.var + self.epsilon)) + obs_rms.mean
+        assert obs.is_floating_point(), ".to(obs) in the next line assumes obs is floating"
+        return (obs * th.sqrt(obs_rms.var + self.epsilon).to(obs)) + obs_rms.mean.to(obs)
 
     def normalize_obs(self, obs: Union[th.Tensor, Dict[str, th.Tensor]]) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         """
@@ -237,7 +238,8 @@ class VecNormalize(VecEnvWrapper):
             if isinstance(obs, dict) and isinstance(self.obs_rms, dict):
                 # Only normalize the specified keys
                 for key in self.norm_obs_keys:
-                    obs_[key] = self._normalize_obs(obs[key], self.obs_rms[key]).to(th.float32)
+                    dtype = obs[key].dtype if obs[key].is_floating_point() else th.get_default_dtype()
+                    obs_[key] = self._normalize_obs(obs[key], self.obs_rms[key]).to(dtype)
             else:
                 obs_ = self._normalize_obs(obs, self.obs_rms).to(th.float32)
         return obs_
@@ -248,7 +250,8 @@ class VecNormalize(VecEnvWrapper):
         Calling this method does not update statistics.
         """
         if self.norm_reward:
-            reward = th.clip(reward / th.sqrt(self.ret_rms.var + self.epsilon), -self.clip_reward, self.clip_reward)
+            dtype = reward.dtype if reward.is_floating_point() else th.get_default_dtype()
+            reward = th.clip(reward / th.sqrt(self.ret_rms.var + self.epsilon), -self.clip_reward, self.clip_reward).to(dtype)
         return reward
 
     def unnormalize_obs(self, obs: Union[th.Tensor, Dict[str, th.Tensor]]) -> Union[th.Tensor, Dict[str, th.Tensor]]:
@@ -264,7 +267,8 @@ class VecNormalize(VecEnvWrapper):
 
     def unnormalize_reward(self, reward: th.Tensor) -> th.Tensor:
         if self.norm_reward:
-            return reward * th.sqrt(self.ret_rms.var + self.epsilon)
+            assert reward.is_floating_point(), ".to(reward) in the next line assumes reward is floating"
+            return reward * th.sqrt(self.ret_rms.var + self.epsilon).to(reward)
         return reward
 
     def get_original_obs(self) -> Union[th.Tensor, Dict[str, th.Tensor]]:
