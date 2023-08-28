@@ -3,6 +3,7 @@ import io
 import json
 import os
 import pathlib
+import subprocess
 import warnings
 import zipfile
 from collections import OrderedDict
@@ -715,7 +716,9 @@ def test_load_invalid_object(tmp_path):
     # Intentionally corrupt the data
     serialization = json_data["learning_rate"][":serialized:"]
     base64_object = base64.b64decode(serialization.encode())
+    assert b"CodeType" in base64_object, "Object to corrupt does not exist"
     new_bytes = base64_object.replace(b"CodeType", b"CodeTyps")
+    assert b"CodeTyps" in base64_object, "Corruption failed"
     base64_encoded = base64.b64encode(new_bytes).decode()
     json_data["learning_rate"][":serialized:"] = base64_encoded
     serialized_data = json.dumps(json_data, indent=4)
@@ -723,8 +726,7 @@ def test_load_invalid_object(tmp_path):
     with open(tmp_path / "data", "w") as f:
         f.write(serialized_data)
     # Replace with the corrupted file
-    # probably doesn't work on windows
-    os.system(f"cd {tmp_path}; zip ppo_pendulum.zip data")
+    subprocess.run(["zip", "ppo_pendulum.zip", "data"], cwd=tmp_path, check=True)
     with pytest.warns(UserWarning, match=r"custom_objects"):
         PPO.load(path)
     # Load with custom object, no warnings
