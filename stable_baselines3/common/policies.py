@@ -703,7 +703,7 @@ class ActorCriticPolicy(BasePolicy):
             latent_vf = self.mlp_extractor.forward_critic(vf_features)
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
-        values = self.value_net(latent_vf)
+        values = self.value_net(latent_vf).squeeze(-1)
         entropy = distribution.entropy()
         return values, log_prob, entropy
 
