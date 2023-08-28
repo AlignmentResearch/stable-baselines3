@@ -12,6 +12,7 @@ from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
 from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
+from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 SelfDQN = TypeVar("SelfDQN", bound="DQN")
 
@@ -242,6 +243,7 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
+        observation = obs_as_tensor(observation, device=self.device)
         if not deterministic and th.rand(()) < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
                 if isinstance(observation, dict):

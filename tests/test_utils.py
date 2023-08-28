@@ -534,42 +534,42 @@ def test_policy_is_vectorized_obs():
     policy = sb3.DQN("MlpPolicy", "CartPole-v1").policy
 
     box_space = spaces.Box(-1, 1, shape=(2,))
-    box_obs = np.ones((1, *box_space.shape))
+    box_obs = th.ones((1, *box_space.shape))
     policy.observation_space = box_space
     assert policy.is_vectorized_observation(box_obs)
-    assert not policy.is_vectorized_observation(np.ones(box_space.shape))
+    assert not policy.is_vectorized_observation(th.ones(box_space.shape))
 
     discrete_space = spaces.Discrete(2)
-    discrete_obs = np.ones((3,), dtype=np.int8)
+    discrete_obs = th.ones((3,), dtype=th.int8)
     policy.observation_space = discrete_space
-    assert not policy.is_vectorized_observation(np.ones((), dtype=np.int8))
+    assert not policy.is_vectorized_observation(th.ones((), dtype=th.int8))
 
     dict_space = spaces.Dict({"box": box_space, "discrete": discrete_space})
     dict_obs = {"box": box_obs, "discrete": discrete_obs}
     policy.observation_space = dict_space
     assert policy.is_vectorized_observation(dict_obs)
-    dict_obs = {"box": np.ones(box_space.shape), "discrete": np.ones((), dtype=np.int8)}
+    dict_obs = {"box": th.ones(box_space.shape), "discrete": th.ones((), dtype=th.int8)}
     assert not policy.is_vectorized_observation(dict_obs)
 
     # Image space are channel-first (done automatically in SB3 using VecTranspose)
     # but observation passed is channel last
     image_space = spaces.Box(low=0, high=255, shape=(3, 32, 32), dtype=np.uint8)
 
-    image_channel_first = image_space.sample()
-    image_channel_last = np.transpose(image_channel_first, (1, 2, 0))
+    image_channel_first = th.as_tensor(image_space.sample())
+    image_channel_last = th.permute(image_channel_first, (1, 2, 0))
     policy.observation_space = image_space
     assert not policy.is_vectorized_observation(image_channel_first)
     assert not policy.is_vectorized_observation(image_channel_last)
-    assert policy.is_vectorized_observation(image_channel_first[np.newaxis])
-    assert policy.is_vectorized_observation(image_channel_last[np.newaxis])
+    assert policy.is_vectorized_observation(image_channel_first.unsqueeze(0))
+    assert policy.is_vectorized_observation(image_channel_last.unsqueeze(0))
 
     # Same with dict obs
     dict_space = spaces.Dict({"image": image_space})
     policy.observation_space = dict_space
     assert not policy.is_vectorized_observation({"image": image_channel_first})
     assert not policy.is_vectorized_observation({"image": image_channel_last})
-    assert policy.is_vectorized_observation({"image": image_channel_first[np.newaxis]})
-    assert policy.is_vectorized_observation({"image": image_channel_last[np.newaxis]})
+    assert policy.is_vectorized_observation({"image": image_channel_first.unsqueeze(0)})
+    assert policy.is_vectorized_observation({"image": image_channel_last.unsqueeze(0)})
 
 
 def test_check_shape_equal():

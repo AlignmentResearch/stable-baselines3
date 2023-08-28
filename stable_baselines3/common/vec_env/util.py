@@ -36,13 +36,13 @@ def as_numpy_dtype(dtype: Union[th.dtype, np.dtype]) -> np.dtype:
     return np.dtype(str(dtype).removeprefix("torch."))
 
 
-def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
+def obs_as_tensor(obs: Union[EnvObs, VecEnvObs], device: Optional[th.device] = None) -> VecEnvObs:
     if isinstance(obs, dict):
-        return {k: th.as_tensor(v) for k, v in obs.items()}
+        return {k: th.as_tensor(v, device=device) for k, v in obs.items()}
     elif isinstance(obs, tuple):
-        return tuple(th.as_tensor(v) for v in obs)
+        return tuple(th.as_tensor(v, device=device) for v in obs)
     else:
-        return th.as_tensor(obs)
+        return th.as_tensor(obs, device=device)
 
 
 def obs_as_np(obs: Union[EnvObs, VecEnvObs], space: Optional[spaces.Space] = None) -> EnvObs:

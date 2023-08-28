@@ -263,12 +263,13 @@ class ReplayBuffer(BaseBuffer):
         else:
             self.next_observations[self.pos].copy_(next_obs)
 
-        self.actions[self.pos].copy_(action)
-        self.rewards[self.pos].copy_(reward)
-        self.dones[self.pos].copy_(done)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos] = th.tensor([info.get("TimeLimit.truncated", False) for info in infos], dtype=th.bool)
+            for i, info in enumerate(infos):
+                self.timeouts[self.pos, i].copy_(th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True)
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -292,9 +293,9 @@ class ReplayBuffer(BaseBuffer):
         # Do not sample the element with index `self.pos` as the transitions is invalid
         # (we use only one array to store `obs` and `next_obs`)
         if self.full:
-            batch_inds = (th.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_inds = (th.randint(1, self.buffer_size, size=(batch_size,)) + self.pos) % self.buffer_size
         else:
-            batch_inds = th.randint(0, self.pos, size=batch_size)
+            batch_inds = th.randint(0, self.pos, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
     def _get_samples(self, batch_inds: th.Tensor, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
@@ -626,12 +627,13 @@ class DictReplayBuffer(ReplayBuffer):
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos].copy_(th.as_tensor(action))
-        self.rewards[self.pos].copy_(reward)
-        self.dones[self.pos].copy_(done)
+        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos].copy_(th.tensor([info.get("TimeLimit.truncated", False) for info in infos], dtype=th.bool))
+            for i, info in enumerate(infos):
+                self.timeouts[self.pos, i].copy_(th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True)
 
         self.pos += 1
         if self.pos == self.buffer_size:
