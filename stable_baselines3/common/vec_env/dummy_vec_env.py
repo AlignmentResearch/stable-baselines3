@@ -57,7 +57,7 @@ class DummyVecEnv(VecEnv):
         # Avoid circular imports
         for env_idx in range(self.num_envs):
             obs, reward, terminated, truncated, self.buf_infos[env_idx] = self.envs[env_idx].step(
-                obs_as_np(self.actions[env_idx])
+                obs_as_np(self.actions[env_idx], space=self.envs[env_idx].action_space)
             )
             obs = obs_as_tensor(obs)
             self.buf_rews[env_idx] = float(reward)

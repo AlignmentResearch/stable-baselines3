@@ -204,7 +204,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         and infos[idx].get("terminal_observation") is not None
                         and infos[idx].get("TimeLimit.truncated", False)
                     ):
-                        terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
+                        terminal_obs = self.policy.obs_maybe_transpose(infos[idx]["terminal_observation"])[0]
                         with th.no_grad():
                             terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
                             # terminal_lstm_state = (

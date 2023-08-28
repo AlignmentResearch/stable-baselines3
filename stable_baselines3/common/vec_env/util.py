@@ -2,7 +2,7 @@
 Helpers for dealing with vectorized environments.
 """
 from collections import OrderedDict
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from gymnasium import spaces
@@ -45,13 +45,30 @@ def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
         return th.as_tensor(obs)
 
 
-def obs_as_np(obs: Union[EnvObs, VecEnvObs]) -> EnvObs:
+def obs_as_np(obs: Union[EnvObs, VecEnvObs], space: Optional[spaces.Space] = None) -> EnvObs:
+    def _as_np(x: Any, space: Optional[spaces.Space]) -> Any:
+        if isinstance(x, th.Tensor):
+            x = x.detach().cpu().numpy()
+        if isinstance(space, spaces.Discrete) and x.shape == ():
+            return np.int64(x)
+        if space is not None:
+            x = x.astype(space.dtype)
+        return x
+
     if isinstance(obs, dict):
-        return {k: v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for k, v in obs.items()}
+        if space is None:
+            return {k: _as_np(v, None) for k, v in obs.items()}
+        else:
+            return {k: _as_np(v, space[k]) for k, v in obs.items()}
+
     elif isinstance(obs, tuple):
-        return tuple(v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for v in obs)
+        if space is None:
+            return tuple(_as_np(o, None) for o in obs)
+        else:
+            return tuple(_as_np(obs, space[i]) for i, obs in enumerate(obs))
+
     else:
-        return obs.detach().cpu().numpy() if isinstance(obs, th.Tensor) else obs
+        return _as_np(obs, space)
 
 
 def clone_obs(obs: VecEnvObs) -> VecEnvObs:
