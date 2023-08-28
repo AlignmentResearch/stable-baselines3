@@ -493,8 +493,11 @@ def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.devi
         return th.as_tensor(obs, device=device)
     elif isinstance(obs, dict):
         return {key: th.as_tensor(_obs, device=device) for (key, _obs) in obs.items()}
-    else:
-        raise Exception(f"Unrecognized type of observation {type(obs)}")
+
+    try:
+        return th.as_tensor(obs, device=device)
+    except Exception as e:
+        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}")
 
 
 def should_collect_more_steps(
