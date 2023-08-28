@@ -263,9 +263,6 @@ class VecEnv(ABC):
                 # Display it using OpenCV
                 import cv2  # pytype:disable=import-error
 
-                if isinstance(bigimg, th.Tensor):
-                    bigimg = bigimg.detach().cpu().numpy()
-
                 cv2.imshow("vecenv", bigimg[:, :, ::-1])
                 cv2.waitKey(1)
             else:
