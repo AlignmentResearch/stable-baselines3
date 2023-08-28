@@ -659,7 +659,7 @@ class DictReplayBuffer(ReplayBuffer):
         env: Optional[VecNormalize] = None,
     ) -> DictReplayBufferSamples:  # type: ignore[signature-mismatch] #FIXME:
         # Sample randomly the env idx
-        env_indices = np.random.randint(0, high=self.n_envs, size=(len(batch_inds),))
+        env_indices = th.randint(0, self.n_envs, size=(len(batch_inds),))
 
         # Normalize if needed and remove extra dimension (we are using only one env for now)
         obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}, env)
