@@ -44,7 +44,7 @@ def tile_images(images_nhwc: Sequence[th.Tensor]) -> th.Tensor:  # pragma: no co
     # img_HWhwc
     out_image = img_nhwc.reshape((new_height, new_width, height, width, n_channels))
     # img_HhWwc
-    out_image = out_image.transpose(0, 2, 1, 3, 4)
+    out_image = out_image.permute(0, 2, 1, 3, 4)
     # img_Hh_Ww_c
     out_image = out_image.reshape((new_height * height, new_width * width, n_channels))
     return out_image
@@ -262,6 +262,9 @@ class VecEnv(ABC):
             if mode == "human":
                 # Display it using OpenCV
                 import cv2  # pytype:disable=import-error
+
+                if isinstance(bigimg, th.Tensor):
+                    bigimg = bigimg.detach().cpu().numpy()
 
                 cv2.imshow("vecenv", bigimg[:, :, ::-1])
                 cv2.waitKey(1)

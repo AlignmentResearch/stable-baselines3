@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
+import torch as th
 from gymnasium import spaces
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvWrapper
@@ -29,12 +30,12 @@ class VecFrameStack(VecEnvWrapper):
 
     def step_wait(
         self,
-    ) -> Tuple[Union[np.ndarray, Dict[str, np.ndarray]], np.ndarray, np.ndarray, List[Dict[str, Any]],]:
+    ) -> Tuple[Union[th.Tensor, Dict[str, th.Tensor]], th.Tensor, th.Tensor, List[Dict[str, Any]],]:
         observations, rewards, dones, infos = self.venv.step_wait()
         observations, infos = self.stacked_obs.update(observations, dones, infos)  # type: ignore[arg-type]
         return observations, rewards, dones, infos
 
-    def reset(self) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def reset(self) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         """
         Reset all environments
         """

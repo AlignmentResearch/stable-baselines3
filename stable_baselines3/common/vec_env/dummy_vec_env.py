@@ -9,7 +9,7 @@ import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs, VecEnvStepReturn
 from stable_baselines3.common.vec_env.patch_gym import _patch_env
-from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info, obs_as_tensor
+from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info, obs_as_tensor, obs_as_np
 
 
 class DummyVecEnv(VecEnv):
@@ -61,7 +61,7 @@ class DummyVecEnv(VecEnv):
         # Avoid circular imports
         for env_idx in range(self.num_envs):
             obs, reward, terminated, truncated, self.buf_infos[env_idx] = self.envs[env_idx].step(
-                self.actions[env_idx].detach().cpu().numpy()
+                obs_as_np(self.actions[env_idx])
             )
             obs = obs_as_tensor(obs)
             self.buf_rews[env_idx] = float(reward)
@@ -98,7 +98,7 @@ class DummyVecEnv(VecEnv):
                 f"The render mode is {self.render_mode}, but this method assumes it is `rgb_array` to obtain images."
             )
             return [None for _ in self.envs]
-        return [torch.as_tensor(env.render()) for env in self.envs]  # type: ignore[misc]
+        return th.stack([th.as_tensor(env.render()) for env in self.envs])  # type: ignore[misc]
 
     def render(self, mode: Optional[str] = None) -> Optional[th.Tensor]:
         """

@@ -238,7 +238,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         # Keep old behavior: do not handle timeout termination separately
         if not hasattr(self.replay_buffer, "handle_timeout_termination"):  # pragma: no cover
             self.replay_buffer.handle_timeout_termination = False
-            self.replay_buffer.timeouts = np.zeros_like(self.replay_buffer.dones)
+            self.replay_buffer.timeouts = th.zeros_like(self.replay_buffer.dones)
 
         if isinstance(self.replay_buffer, HerReplayBuffer):
             assert self.env is not None, "You must pass an environment at load time when using `HerReplayBuffer`"
@@ -346,7 +346,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         learning_starts: int,
         action_noise: Optional[ActionNoise] = None,
         n_envs: int = 1,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[th.Tensor, th.Tensor]:
         """
         Sample an action according to the exploration policy.
         This is either done by sampling the probability distribution of the policy,
@@ -365,7 +365,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         # Select action randomly or according to policy
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
-            unscaled_action = np.array([self.action_space.sample() for _ in range(n_envs)])
+            unscaled_action = th.stack([th.as_tensor(self.action_space.sample()) for _ in range(n_envs)], dim=0)
         else:
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
@@ -378,7 +378,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
             # Add noise to the action (improve exploration)
             if action_noise is not None:
-                scaled_action = np.clip(scaled_action + action_noise(), -1, 1)
+                scaled_action = th.clip(scaled_action + action_noise(), -1, 1)
 
             # We store the scaled action in the buffer
             buffer_action = scaled_action
@@ -421,10 +421,10 @@ class OffPolicyAlgorithm(BaseAlgorithm):
     def _store_transition(
         self,
         replay_buffer: ReplayBuffer,
-        buffer_action: np.ndarray,
-        new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
-        reward: np.ndarray,
-        dones: np.ndarray,
+        buffer_action: th.Tensor,
+        new_obs: Union[th.Tensor, Dict[str, th.Tensor]],
+        reward: th.Tensor,
+        dones: th.Tensor,
         infos: List[Dict[str, Any]],
     ) -> None:
         """

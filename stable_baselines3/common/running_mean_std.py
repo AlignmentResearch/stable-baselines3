@@ -34,8 +34,10 @@ class RunningMeanStd:
         self.update_from_moments(other.mean, other.var, other.count)
 
     def update(self, arr: th.Tensor) -> None:
-        batch_mean = th.mean(arr, axis=0)
-        batch_var = th.var(arr, axis=0, unbiased=False)
+        if not arr.is_floating_point():
+            arr = arr.to(th.float32)
+        batch_mean = th.mean(arr, dim=0)
+        batch_var = th.var(arr, dim=0, unbiased=False)
         batch_count = arr.shape[0]
         self.update_from_moments(batch_mean, batch_var, batch_count)
 

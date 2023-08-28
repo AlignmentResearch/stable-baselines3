@@ -113,7 +113,7 @@ def _check_nan(env: gym.Env) -> None:
     vec_env = VecCheckNan(DummyVecEnv([lambda: env]))
     vec_env.reset()
     for _ in range(10):
-        action = th.as_tensor([env.action_space.sample()])
+        action = th.as_tensor(env.action_space.sample()).unsqueeze(dim=0)
         _, _, _, _ = vec_env.step(action)
 
 

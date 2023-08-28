@@ -2,11 +2,13 @@ import warnings
 from typing import Any, Dict, Generic, List, Mapping, Optional, Tuple, TypeVar, Union
 
 import numpy as np
+import torch as th
 from gymnasium import spaces
 
 from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
+from stable_baselines3.common.vec_env.util import as_torch_dtype
 
-TObs = TypeVar("TObs", np.ndarray, Dict[str, np.ndarray])
+TObs = TypeVar("TObs", th.Tensor, Dict[str, th.Tensor])
 
 
 # Disable errors for pytype which doesn't play well with Generic[TypeVar]
@@ -60,7 +62,7 @@ class StackedObservations(Generic[TObs]):
                 high=high,
                 dtype=observation_space.dtype,  # type: ignore[arg-type]
             )
-            self.stacked_obs = np.zeros((num_envs, *self.stacked_shape), dtype=observation_space.dtype)
+            self.stacked_obs = th.zeros((num_envs, *self.stacked_shape), dtype=as_torch_dtype(observation_space.dtype))
         else:
             raise TypeError(
                 f"StackedObservations only supports Box and Dict as observation spaces. {observation_space} was provided."
@@ -123,7 +125,7 @@ class StackedObservations(Generic[TObs]):
     def update(
         self,
         observations: TObs,
-        dones: np.ndarray,
+        dones: th.Tensor,
         infos: List[Dict[str, Any]],
     ) -> Tuple[TObs, List[Dict[str, Any]]]:
         """
@@ -159,7 +161,7 @@ class StackedObservations(Generic[TObs]):
             return stacked_obs, infos
 
         shift = -observations.shape[self.stack_dimension]
-        self.stacked_obs = np.roll(self.stacked_obs, shift, axis=self.stack_dimension)
+        self.stacked_obs = th.roll(self.stacked_obs, shift, dims=self.stack_dimension)
         for env_idx, done in enumerate(dones):
             if done:
                 if "terminal_observation" in infos[env_idx]:
@@ -169,7 +171,7 @@ class StackedObservations(Generic[TObs]):
                     else:
                         previous_stack = self.stacked_obs[env_idx, ..., :shift]
 
-                    new_terminal = np.concatenate((previous_stack, old_terminal), axis=self.repeat_axis)
+                    new_terminal = th.cat((previous_stack, old_terminal), dim=self.repeat_axis)
                     infos[env_idx]["terminal_observation"] = new_terminal
                 else:
                     warnings.warn("VecFrameStack wrapping a VecEnv without terminal_observation info")

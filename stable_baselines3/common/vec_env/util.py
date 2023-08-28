@@ -32,6 +32,14 @@ def obs_as_tensor(obs: Union[EnvObs, VecEnvObs]) -> VecEnvObs:
     else:
         return th.as_tensor(obs)
 
+def obs_as_np(obs: Union[EnvObs, VecEnvObs]) -> EnvObs:
+    if isinstance(obs, dict):
+        return {k: v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for k, v in obs.items()}
+    elif isinstance(obs, tuple):
+        return tuple(v.detach().cpu().numpy() if isinstance(v, th.Tensor) else v for v in obs)
+    else:
+        return obs.detach().cpu().numpy()  if isinstance(obs, th.Tensor) else obs
+
 
 def clone_obs(obs: VecEnvObs) -> VecEnvObs:
     """

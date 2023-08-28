@@ -61,7 +61,7 @@ class VecNormalize(VecEnvWrapper):
                             low=-clip_obs,
                             high=clip_obs,
                             shape=self.obs_spaces[key].shape,
-                            dtype=th.float32,
+                            dtype=np.float32,
                         )
 
             else:
@@ -80,7 +80,7 @@ class VecNormalize(VecEnvWrapper):
                         low=-clip_obs,
                         high=clip_obs,
                         shape=self.observation_space.shape,
-                        dtype=th.float32,
+                        dtype=np.float32,
                     )
 
         self.ret_rms = RunningMeanStd(shape=())

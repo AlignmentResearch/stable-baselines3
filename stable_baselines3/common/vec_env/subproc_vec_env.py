@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, U
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import (
     CloudpickleWrapper,
@@ -15,6 +16,7 @@ from stable_baselines3.common.vec_env.base_vec_env import (
     VecEnvStepReturn,
 )
 from stable_baselines3.common.vec_env.patch_gym import _patch_env
+from stable_baselines3.common.vec_env.util import obs_as_tensor, obs_as_np
 
 
 def _worker(
@@ -38,7 +40,7 @@ def _worker(
                 info["TimeLimit.truncated"] = truncated and not terminated
                 if done:
                     # save final observation where user can get it, then reset
-                    info["terminal_observation"] = observation
+                    info["terminal_observation"] = obs_as_tensor(observation)
                     observation, reset_info = env.reset()
                 remote.send((observation, reward, done, info, reset_info))
             elif cmd == "reset":
@@ -121,16 +123,20 @@ class SubprocVecEnv(VecEnv):
 
         super().__init__(len(env_fns), observation_space, action_space)
 
-    def step_async(self, actions: np.ndarray) -> None:
+    @property
+    def device(self) -> th.device:
+        return th.device("cpu")
+
+    def step_async(self, actions: th.Tensor) -> None:
         for remote, action in zip(self.remotes, actions):
-            remote.send(("step", action))
+            remote.send(("step", obs_as_np(action)))
         self.waiting = True
 
     def step_wait(self) -> VecEnvStepReturn:
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos, self.reset_infos = zip(*results)
-        return _flatten_obs(obs, self.observation_space), np.stack(rews), np.stack(dones), infos
+        return _flatten_obs(obs, self.observation_space), th.as_tensor(rews, dtype=th.float32), th.as_tensor(dones, dtype=th.bool), infos
 
     def reset(self) -> VecEnvObs:
         for env_idx, remote in enumerate(self.remotes):
@@ -153,7 +159,7 @@ class SubprocVecEnv(VecEnv):
             process.join()
         self.closed = True
 
-    def get_images(self) -> Sequence[Optional[np.ndarray]]:
+    def get_images(self) -> Sequence[Optional[th.Tensor]]:
         if self.render_mode != "rgb_array":
             warnings.warn(
                 f"The render mode is {self.render_mode}, but this method assumes it is `rgb_array` to obtain images."
@@ -162,7 +168,7 @@ class SubprocVecEnv(VecEnv):
         for pipe in self.remotes:
             # gather render return from subprocesses
             pipe.send(("render", None))
-        outputs = [pipe.recv() for pipe in self.remotes]
+        outputs = th.stack([th.as_tensor(pipe.recv()) for pipe in self.remotes], dim=0)
         return outputs
 
     def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:
@@ -223,10 +229,10 @@ def _flatten_obs(obs: Union[List[VecEnvObs], Tuple[VecEnvObs]], space: spaces.Sp
     if isinstance(space, spaces.Dict):
         assert isinstance(space.spaces, OrderedDict), "Dict space must have ordered subspaces"
         assert isinstance(obs[0], dict), "non-dict observation for environment with Dict observation space"
-        return OrderedDict([(k, np.stack([o[k] for o in obs])) for k in space.spaces.keys()])
+        return OrderedDict([(k, th.stack([th.as_tensor(o[k]) for o in obs])) for k in space.spaces.keys()])
     elif isinstance(space, spaces.Tuple):
         assert isinstance(obs[0], tuple), "non-tuple observation for environment with Tuple observation space"
         obs_len = len(space.spaces)
-        return tuple(np.stack([o[i] for o in obs]) for i in range(obs_len))  # type: ignore[index]
+        return tuple(th.stack([th.as_tensor(o[i]) for o in obs]) for i in range(obs_len))  # type: ignore[index]
     else:
-        return np.stack(obs)  # type: ignore[arg-type]
+        return th.stack([th.as_tensor(o) for o in obs])  # type: ignore[arg-type]

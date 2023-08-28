@@ -3,6 +3,7 @@ from typing import Dict, Union
 
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
@@ -60,18 +61,18 @@ class VecTransposeImage(VecEnvWrapper):
         return spaces.Box(low=0, high=255, shape=new_shape, dtype=observation_space.dtype)
 
     @staticmethod
-    def transpose_image(image: np.ndarray) -> np.ndarray:
+    def transpose_image(image: th.Tensor) -> th.Tensor:
         """
-        Transpose an image or batch of images (re-order channels).
+        Transpose an image or batch of images: (N)HWC -> (N)CHW.
 
         :param image:
         :return:
         """
         if len(image.shape) == 3:
-            return np.transpose(image, (2, 0, 1))
-        return np.transpose(image, (0, 3, 1, 2))
+            return th.permute(image, (2, 0, 1))
+        return th.permute(image, (0, 3, 1, 2))
 
-    def transpose_observations(self, observations: Union[np.ndarray, Dict]) -> Union[np.ndarray, Dict]:
+    def transpose_observations(self, observations: Union[th.Tensor, Dict]) -> Union[th.Tensor, Dict]:
         """
         Transpose (if needed) and return new observations.
 
@@ -83,8 +84,8 @@ class VecTransposeImage(VecEnvWrapper):
             return observations
 
         if isinstance(observations, dict):
-            # Avoid modifying the original object in place
-            observations = deepcopy(observations)
+            # Avoid modifying the original dict in place
+            observations = observations.copy()
             for k in self.image_space_keys:
                 observations[k] = self.transpose_image(observations[k])
         else:
@@ -103,7 +104,7 @@ class VecTransposeImage(VecEnvWrapper):
 
         return self.transpose_observations(observations), rewards, dones, infos
 
-    def reset(self) -> Union[np.ndarray, Dict]:
+    def reset(self) -> Union[th.Tensor, Dict]:
         """
         Reset all environments
         """
