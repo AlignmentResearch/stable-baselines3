@@ -474,7 +474,6 @@ class RolloutBuffer(BaseBuffer):
 
     def get(self, batch_size: Optional[int] = None) -> Generator[RolloutBufferSamples, None, None]:
         assert self.full, ""
-        indices = np.random.permutation(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
             _tensor_names = [
@@ -494,10 +493,15 @@ class RolloutBuffer(BaseBuffer):
         if batch_size is None:
             batch_size = self.buffer_size * self.n_envs
 
-        start_idx = 0
-        while start_idx < self.buffer_size * self.n_envs:
-            yield self._get_samples(indices[start_idx : start_idx + batch_size])
-            start_idx += batch_size
+        if batch_size == self.buffer_size * self.n_envs:
+            yield self._get_samples(slice(None))
+        else:
+            indices = th.randperm(self.buffer_size * self.n_envs)
+            start_idx = 0
+
+            while start_idx < self.buffer_size * self.n_envs:
+                yield self._get_samples(indices[start_idx : start_idx + batch_size])
+                start_idx += batch_size
 
     def _get_samples(
         self,
