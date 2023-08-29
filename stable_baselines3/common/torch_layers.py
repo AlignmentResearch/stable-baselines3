@@ -1,13 +1,21 @@
-from typing import Dict, List, Tuple, Type, Union
+from typing import Dict, List, Mapping, Tuple, Type, Union
 
 import gymnasium as gym
 import torch as th
 from gymnasium import spaces
 from torch import nn
+from torch.utils._pytree import PyTree
 
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
 from stable_baselines3.common.type_aliases import TensorDict
 from stable_baselines3.common.utils import get_device
+from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
+
+
+@dataclass_frozen_pytree
+class ExtractorOutput:
+    features: th.Tensor
+    state: PyTree
 
 
 class BaseFeaturesExtractor(nn.Module):
@@ -28,6 +36,9 @@ class BaseFeaturesExtractor(nn.Module):
     def features_dim(self) -> int:
         return self._features_dim
 
+    def forward(self, observations: PyTree) -> ExtractorOutput:
+        raise NotImplementedError()
+
 
 class FlattenExtractor(BaseFeaturesExtractor):
     """
@@ -41,8 +52,8 @@ class FlattenExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, get_flattened_obs_dim(observation_space))
         self.flatten = nn.Flatten()
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
-        return self.flatten(observations)
+    def forward(self, observations: th.Tensor) -> ExtractorOutput:
+        return ExtractorOutput(self.flatten(observations), ())
 
 
 class NatureCNN(BaseFeaturesExtractor):
@@ -102,8 +113,8 @@ class NatureCNN(BaseFeaturesExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
-        return self.linear(self.cnn(observations))
+    def forward(self, observations: th.Tensor) -> ExtractorOutput:
+        return ExtractorOutput(self.linear(self.cnn(observations)), ())
 
 
 def create_mlp(
@@ -244,6 +255,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
         Otherwise, it checks that it has expected dtype (uint8) and bounds (values in [0, 255]).
     """
 
+    extractors: Mapping[str, BaseFeaturesExtractor] = {}
     def __init__(
         self,
         observation_space: spaces.Dict,
@@ -252,8 +264,6 @@ class CombinedExtractor(BaseFeaturesExtractor):
     ) -> None:
         # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
         super().__init__(observation_space, features_dim=1)
-
-        extractors: Dict[str, nn.Module] = {}
 
         total_concat_size = 0
         for key, subspace in observation_space.spaces.items():
@@ -270,12 +280,15 @@ class CombinedExtractor(BaseFeaturesExtractor):
         # Update the features dim manually
         self._features_dim = total_concat_size
 
-    def forward(self, observations: TensorDict) -> th.Tensor:
+    def forward(self, observations: TensorDict) -> ExtractorOutput:
         encoded_tensor_list = []
-
+        states = []
         for key, extractor in self.extractors.items():
-            encoded_tensor_list.append(extractor(observations[key]))
-        return th.cat(encoded_tensor_list, dim=1)
+            out: ExtractorOutput = extractor(observations[key])
+            encoded_tensor_list.append(out.features)
+            states.append(out.state)
+
+        return ExtractorOutput(th.cat(encoded_tensor_list, dim=1), tuple(states))
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:
