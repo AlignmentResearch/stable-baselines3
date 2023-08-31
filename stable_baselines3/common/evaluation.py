@@ -89,6 +89,7 @@ def evaluate_policy(
     current_lengths = torch.zeros(n_envs, dtype=torch.int64, device=device)
     states = None
     episode_starts = torch.ones((env.num_envs,), dtype=torch.bool, device=device)
+    initial_states = model.initial_state(n_envs)
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(
             observations,  # type: ignore[arg-type]

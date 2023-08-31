@@ -1,11 +1,15 @@
 import dataclasses
-from typing import Optional, Sequence, Type
+from typing import Optional, Sequence, Type, TypeVar
 
-from torch.utils._pytree import Context, PyTree, _register_pytree_node
+from torch.utils._pytree import Context, PyTree, _register_pytree_node, tree_map
 from typing_extensions import dataclass_transform
 
+__all__ = ["register_dataclass_as_pytree", "dataclass_frozen_pytree", "tree_map"]
 
-def register_dataclass_as_pytree(Cls: type[T], whitelist: Optional[Sequence[str]] = None) -> type[T]:
+
+T = TypeVar("T")
+
+def register_dataclass_as_pytree(Cls: Type[T], whitelist: Optional[Sequence[str]] = None) -> Type[T]:
     """Register a dataclass as a pytree, using the given whitelist of field names.
 
     :param Cls: The dataclass to register.

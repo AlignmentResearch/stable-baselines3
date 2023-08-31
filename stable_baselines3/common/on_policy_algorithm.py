@@ -3,6 +3,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
+from stable_baselines3.common.pytree_dataclass import tree_map
 import torch as th
 from gymnasium import spaces
 
@@ -125,6 +126,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         )
         # pytype:enable=not-instantiable
         self.policy = self.policy.to(self.device)
+        self._last_extractor_states = self.policy.initial_state(n_envs)
+
 
     def collect_rollouts(
         self,
@@ -159,7 +162,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_start()
 
         # Recurrent state from the feature extractor, that will be updated
-        # extractor_states = tree_map(lambda x: x.clone(), self._last_extractor_states)
+        extractor_states = tree_map(lambda x: x.clone(), self._last_extractor_states)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -169,8 +172,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                # actions, values, log_probs, extractor_states = self.policy.forward_with_states(obs_tensor, extractor_states, self._last_episode_starts)
-                actions, values, log_probs = self.policy(obs_tensor)
+                policy_out = self.policy(obs_tensor)  #, extractor_states, self._last_episode_starts)
+                extractor_states = policy_out.state
+                actions, values, log_probs = policy_out.out
             actions = actions.to(env.device)
 
             # Rescale and perform action
@@ -227,13 +231,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             )
             self._last_obs = new_obs  # type: ignore[assignment]
             self._last_episode_starts = dones
-            # self._last_extractor_states = extractor_states
+            self._last_extractor_states = extractor_states
 
         with th.no_grad():
             # Compute value for the last timestep
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
+            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
 
-        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+        rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
 
         callback.on_rollout_end()
 

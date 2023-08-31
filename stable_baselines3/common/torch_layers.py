@@ -1,4 +1,4 @@
-from typing import Dict, List, Mapping, Tuple, Type, Union
+from typing import Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union
 
 import gymnasium as gym
 import torch as th
@@ -12,10 +12,14 @@ from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 
 
+T = TypeVar("T")
+
 @dataclass_frozen_pytree
-class ExtractorOutput:
-    features: th.Tensor
+class OutAndState(Generic[T]):
+    out: T
     state: PyTree
+
+ExtractorOutput = OutAndState[th.Tensor]
 
 
 class BaseFeaturesExtractor(nn.Module):
@@ -36,8 +40,14 @@ class BaseFeaturesExtractor(nn.Module):
     def features_dim(self) -> int:
         return self._features_dim
 
-    def forward(self, observations: PyTree) -> ExtractorOutput:
+    def forward(self, observations: PyTree) -> OutAndState[th.Tensor]:
         raise NotImplementedError()
+
+    def _initial_state(self) -> PyTree:
+        return ()
+
+    def initial_state(self, n_envs: Optional[int]) -> PyTree:
+        return tree_map(lambda x: x.unsqueeze(0).repeat((n_envs,) + (1,)*x.ndim), self._initial_state())
 
 
 class FlattenExtractor(BaseFeaturesExtractor):
@@ -52,8 +62,8 @@ class FlattenExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, get_flattened_obs_dim(observation_space))
         self.flatten = nn.Flatten()
 
-    def forward(self, observations: th.Tensor) -> ExtractorOutput:
-        return ExtractorOutput(self.flatten(observations), ())
+    def forward(self, observations: th.Tensor) -> OutAndState[th.Tensor]:
+        return OutAndState(self.flatten(observations), ())
 
 
 class NatureCNN(BaseFeaturesExtractor):
@@ -113,8 +123,8 @@ class NatureCNN(BaseFeaturesExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
-    def forward(self, observations: th.Tensor) -> ExtractorOutput:
-        return ExtractorOutput(self.linear(self.cnn(observations)), ())
+    def forward(self, observations: th.Tensor) -> OutAndState[th.Tensor]:
+        return OutAndState(self.linear(self.cnn(observations)), ())
 
 
 def create_mlp(
@@ -280,15 +290,15 @@ class CombinedExtractor(BaseFeaturesExtractor):
         # Update the features dim manually
         self._features_dim = total_concat_size
 
-    def forward(self, observations: TensorDict) -> ExtractorOutput:
+    def forward(self, observations: TensorDict) -> OutAndState[th.Tensor]:
         encoded_tensor_list = []
         states = []
         for key, extractor in self.extractors.items():
-            out: ExtractorOutput = extractor(observations[key])
-            encoded_tensor_list.append(out.features)
+            out: OutAndState[th.Tensor] = extractor(observations[key])
+            encoded_tensor_list.append(out.out)
             states.append(out.state)
 
-        return ExtractorOutput(th.cat(encoded_tensor_list, dim=1), tuple(states))
+        return OutAndState(th.cat(encoded_tensor_list, dim=1), tuple(states))
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:
