@@ -82,6 +82,7 @@ class SAC(OffPolicyAlgorithm):
         "CnnPolicy": CnnPolicy,
         "MultiInputPolicy": MultiInputPolicy,
     }
+    _no_state_error: ClassVar[Exception] = NotImplementedError("SAC does not support recurrent policies")
     policy: SACPolicy
     actor: Actor
     critic: ContinuousCritic
@@ -219,7 +220,7 @@ class SAC(OffPolicyAlgorithm):
                 self.actor.reset_noise()
 
             # Action by the current actor for the sampled state
-            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
+            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations, self._last_extractor_states).discard_state(self._no_state_error)
             log_prob = log_prob.reshape(-1, 1)
 
             ent_coef_loss = None
@@ -244,7 +245,7 @@ class SAC(OffPolicyAlgorithm):
 
             with th.no_grad():
                 # Select action according to policy
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
+                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations, self._last_extractor_states).discard_state(self._no_state_error)
                 # Compute the next Q values: min over all critics targets
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)

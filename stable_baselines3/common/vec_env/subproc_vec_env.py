@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import warnings
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 import gymnasium as gym
 import numpy as np
@@ -169,7 +169,7 @@ class SubprocVecEnv(VecEnv):
             # gather render return from subprocesses
             pipe.send(("render", None))
         outputs = th.stack([th.as_tensor(pipe.recv()) for pipe in self.remotes], dim=0)
-        return outputs
+        return cast(Sequence[th.Tensor], outputs)
 
     def get_attr(self, attr_name: str, indices: VecEnvIndices = None) -> List[Any]:
         """Return attribute from vectorized environment (see base class)."""

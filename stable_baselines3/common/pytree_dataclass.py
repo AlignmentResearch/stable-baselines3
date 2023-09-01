@@ -1,3 +1,4 @@
+from _typeshed import DataclassInstance
 import dataclasses
 from typing import Optional, Sequence, Type, TypeVar
 
@@ -9,7 +10,7 @@ __all__ = ["register_dataclass_as_pytree", "dataclass_frozen_pytree", "tree_map"
 
 T = TypeVar("T")
 
-def register_dataclass_as_pytree(Cls: Type[T], whitelist: Optional[Sequence[str]] = None) -> Type[T]:
+def register_dataclass_as_pytree(Cls: type[T], whitelist: Optional[Sequence[str]] = None) -> type[DataclassInstance]:
     """Register a dataclass as a pytree, using the given whitelist of field names.
 
     :param Cls: The dataclass to register.
@@ -21,10 +22,10 @@ def register_dataclass_as_pytree(Cls: Type[T], whitelist: Optional[Sequence[str]
 
     names = tuple(f.name for f in dataclasses.fields(Cls) if whitelist is None or f.name in whitelist)
 
-    def flatten_fn(inst: Cls) -> tuple[list[PyTree], Context]:
+    def flatten_fn(inst: T) -> tuple[list[PyTree], Context]:
         return list(getattr(inst, n) for n in names), names
 
-    def unflatten_fn(values: list[PyTree], names: Context) -> Cls:
+    def unflatten_fn(values: list[PyTree], names: Context) -> DataclassInstance:
         return Cls(**dict(zip(names, values)))
 
     _register_pytree_node(Cls, flatten_fn, unflatten_fn)

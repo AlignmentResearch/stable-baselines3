@@ -115,7 +115,7 @@ class StackedObservations(Generic[TObs]):
                 key: self.sub_stacked_observations[key].reset(obs) for key, obs in observation.items()
             }  # pytype: disable=bad-return-type
 
-        self.stacked_obs[...] = 0
+        self.stacked_obs.zero_()
         if self.channels_first:
             self.stacked_obs[:, -observation.shape[self.stack_dimension] :, ...] = observation
         else:

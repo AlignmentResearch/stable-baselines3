@@ -1,4 +1,6 @@
 from typing import Any, Dict, List, Optional, Type
+from stable_baselines3.common.pytree_dataclass import PyTree
+from stable_baselines3.dqn.dqn import OutAndState
 
 import torch as th
 from gymnasium import spaces
@@ -56,19 +58,19 @@ class QNetwork(BasePolicy):
         q_net = create_mlp(self.features_dim, action_dim, self.net_arch, self.activation_fn)
         self.q_net = nn.Sequential(*q_net)
 
-    def forward(self, obs: th.Tensor) -> th.Tensor:
+    def forward(self, obs: th.Tensor, state: PyTree) -> OutAndState:
         """
         Predict the q-values.
 
         :param obs: Observation
         :return: The estimated Q-Value for each action.
         """
-        return self.q_net(self.extract_features(obs, self.features_extractor))
+        return self.extract_features(obs, state, self.features_extractor).apply(self.q_net)
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = True) -> th.Tensor:
-        q_values = self(observation)
+    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = True) -> th.Tensor:
+        q_values = self(observation, state)
         # Greedy action
-        action = q_values.argmax(dim=1).reshape(-1)
+        action = q_values.apply(lambda x: x.argmax(dim=1).reshape(-1))
         return action
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:

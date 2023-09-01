@@ -3,8 +3,9 @@ from typing import Any, Dict, List, Optional, Type, Union
 import torch as th
 from gymnasium import spaces
 from torch import nn
+from torch.utils._pytree import PyTree
 
-from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
+from stable_baselines3.common.policies import BasePolicy, ContinuousCritic, OutAndState
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -72,12 +73,12 @@ class Actor(BasePolicy):
         )
         return data
 
-    def forward(self, obs: th.Tensor) -> th.Tensor:
+    def forward(self, obs: th.Tensor, state: PyTree) -> OutAndState[th.Tensor]:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
-        features = self.extract_features(obs, self.features_extractor)
-        return self.mu(features)
+        features = self.extract_features(obs, state, self.features_extractor)
+        return OutAndState(self.mu(features.out), features.state)
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
         return self(observation)
@@ -233,10 +234,10 @@ class TD3Policy(BasePolicy):
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
         return ContinuousCritic(**critic_kwargs).to(self.device)
 
-    def forward(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        return self._predict(observation, deterministic=deterministic)
+    def forward(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self._predict(observation, state, deterministic=deterministic)
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
         return self.actor(observation)

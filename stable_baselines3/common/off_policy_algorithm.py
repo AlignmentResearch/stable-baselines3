@@ -206,6 +206,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
         # Convert train freq parameter to TrainFreq object
         self._convert_train_freq()
+        self._last_extractor_states = self.policy.initial_state(self.n_envs)
 
     def save_replay_buffer(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:
         """

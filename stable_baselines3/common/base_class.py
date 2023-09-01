@@ -10,7 +10,9 @@ from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, T
 
 import gymnasium as gym
 import numpy as np
+from stable_baselines3.common.torch_layers import OutAndState
 import torch as th
+from torch.util._pytree import PyTree
 from gymnasium import spaces
 
 from stable_baselines3.common import utils
@@ -141,10 +143,11 @@ class BaseAlgorithm(ABC):
         self.start_time = 0.0
         self.learning_rate = learning_rate
         self.tensorboard_log = tensorboard_log
-        self._last_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
-        self._last_episode_starts = None  # type: Optional[np.ndarray]
+        self._last_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
+        self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
-        self._last_original_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
+        self._last_original_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
+        self._last_extractor_states: Optional[PyTree] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde
@@ -534,11 +537,11 @@ class BaseAlgorithm(ABC):
 
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> OutAndState[Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).

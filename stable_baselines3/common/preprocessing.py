@@ -106,15 +106,18 @@ def preprocess_obs(
     :return:
     """
     if isinstance(observation_space, spaces.Box):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         if normalize_images and is_image_space(observation_space):
             return obs.float() / 255.0
         return obs.float()
 
     elif isinstance(observation_space, spaces.Discrete):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         # One hot encoding and convert to float to avoid errors
         return F.one_hot(obs.long(), num_classes=observation_space.n).float()
 
     elif isinstance(observation_space, spaces.MultiDiscrete):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         # Tensor concatenation of one hot encodings of each Categorical sub-space
         return th.cat(
             [
@@ -125,6 +128,7 @@ def preprocess_obs(
         ).view(obs.shape[0], sum(observation_space.nvec))
 
     elif isinstance(observation_space, spaces.MultiBinary):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         return obs.float()
 
     elif isinstance(observation_space, spaces.Dict):
@@ -132,7 +136,9 @@ def preprocess_obs(
         assert isinstance(obs, Dict), f"Expected dict, got {type(obs)}"
         preprocessed_obs = {}
         for key, _obs in obs.items():
-            preprocessed_obs[key] = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
+            processed = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
+            assert isinstance(processed, th.Tensor), f"Expected {th.Tensor}, got {type(processed)}"
+            preprocessed_obs[key] = processed
         return preprocessed_obs
 
     else:

@@ -123,7 +123,7 @@ class BaseModel(nn.Module):
         """Helper method to create a features extractor."""
         return self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
 
-    def extract_features(self, obs: TorchGymObs, features_extractor: BaseFeaturesExtractor) -> ExtractorOutput:
+    def extract_features(self, obs: TorchGymObs, state: PyTree, features_extractor: BaseFeaturesExtractor) -> ExtractorOutput:
         """
         Preprocess the observation if needed and extract features.
 
@@ -132,7 +132,7 @@ class BaseModel(nn.Module):
          :return: The extracted features
         """
         preprocessed_obs = preprocess_obs(obs, self.observation_space, normalize_images=self.normalize_images)
-        return features_extractor(preprocessed_obs)
+        return features_extractor(preprocessed_obs, state)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         """
@@ -652,7 +652,7 @@ class ActorCriticPolicy(BasePolicy):
         actions = actions.reshape((-1, *self.action_space.shape))
         return OutAndState((actions, values, log_prob), state=extractor_state)
 
-    def extract_features(self, obs: TorchGymObs) -> Union[ExtractorOutput, Tuple[ExtractorOutput, ExtractorOutput]]:
+    def extract_features(self, obs: TorchGymObs, extractor_state: PyTree) -> Union[ExtractorOutput, Tuple[ExtractorOutput, ExtractorOutput]]:
         """
         Preprocess the observation if needed and extract features.
 
@@ -660,10 +660,10 @@ class ActorCriticPolicy(BasePolicy):
         :return: the output of the features extractor(s)
         """
         if self.share_features_extractor:
-            return super().extract_features(obs, self.features_extractor)
+            return super().extract_features(obs, extractor_state, self.features_extractor)
         else:
-            pi_out = super().extract_features(obs, self.pi_features_extractor)
-            vf_out = super().extract_features(obs, self.vf_features_extractor)
+            pi_out = super().extract_features(obs, extractor_state, self.pi_features_extractor)
+            vf_out = super().extract_features(obs, extractor_state, self.vf_features_extractor)
             return pi_out, vf_out
 
     def _get_action_dist_from_latent(self, latent_pi: th.Tensor) -> Distribution:
@@ -713,7 +713,7 @@ class ActorCriticPolicy(BasePolicy):
             and entropy of the action distribution.
         """
         # Preprocess the observation if needed
-        extractor_out = self.extract_features(obs)
+        extractor_out = self.extract_features(obs, states)
         if not isinstance(extractor_out, tuple):
             assert self.share_features_extractor
             latent_pi, latent_vf = self.mlp_extractor(extractor_out.out)

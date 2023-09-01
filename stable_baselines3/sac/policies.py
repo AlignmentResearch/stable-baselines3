@@ -1,8 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from stable_baselines3.td3.policies import OutAndState
 
 import torch as th
 from gymnasium import spaces
 from torch import nn
+from torch.utils._pytree import PyTree
 
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
@@ -144,7 +146,7 @@ class Actor(BasePolicy):
         assert isinstance(self.action_dist, StateDependentNoiseDistribution), msg
         self.action_dist.sample_weights(self.log_std, batch_size=batch_size)
 
-    def get_action_dist_params(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]:
+    def get_action_dist_params(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]]:
         """
         Get the parameters for the action distribution.
 
@@ -152,30 +154,34 @@ class Actor(BasePolicy):
         :return:
             Mean, standard deviation and optional keyword arguments.
         """
-        features = self.extract_features(obs, self.features_extractor)
-        latent_pi = self.latent_pi(features)
+        features = self.extract_features(obs, extractor_state, self.features_extractor)
+        latent_pi = self.latent_pi(features.out)
         mean_actions = self.mu(latent_pi)
 
         if self.use_sde:
-            return mean_actions, self.log_std, dict(latent_sde=latent_pi)
+            return OutAndState((mean_actions, self.log_std, dict(latent_sde=latent_pi)), features.state)
         # Unstructured exploration (Original implementation)
         log_std = self.log_std(latent_pi)  # type: ignore[operator]
         # Original Implementation to cap the standard deviation
         log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        return mean_actions, log_std, {}
+        return OutAndState((mean_actions, log_std, {}), features.state)
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+    def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        action_dist_params = self.get_action_dist_params(obs, extractor_state)
+        mean_actions, log_std, kwargs = action_dist_params.out
         # Note: the action is squashed
-        return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
+        action = self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
+        return OutAndState(action, action_dist_params.state)
 
-    def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+    def action_log_prob(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
+        action_dist_params = self.get_action_dist_params(obs, extractor_state)
+        mean_actions, log_std, kwargs = action_dist_params.out
         # return action and associated log prob
-        return self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
+        action_dist = self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
+        return OutAndState(action_dist, action_dist_params.state)
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        return self(observation, deterministic)
+    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState:
+        return self(observation, deterministic, state=state)
 
 
 class SACPolicy(BasePolicy):
@@ -346,10 +352,10 @@ class SACPolicy(BasePolicy):
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
         return ContinuousCritic(**critic_kwargs).to(self.device)
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        return self._predict(obs, deterministic=deterministic)
+    def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self._predict(obs, extractor_state, deterministic=deterministic)
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         return self.actor(observation, deterministic)
 
     def set_training_mode(self, mode: bool) -> None:

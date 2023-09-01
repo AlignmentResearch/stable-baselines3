@@ -12,7 +12,7 @@ from stable_baselines3.common.preprocessing import check_for_nested_spaces
 from stable_baselines3.common.vec_env.base_vec_env import EnvObs, VecEnvObs
 
 
-def as_torch_dtype(dtype: Union[th.dtype, np.dtype]) -> th.dtype:
+def as_torch_dtype(dtype: Union[th.dtype, np.dtype, None]) -> th.dtype:
     """
     Convert a numpy dtype to a PyTorch dtype, if it is not already one.
 
@@ -59,12 +59,14 @@ def obs_as_np(obs: Union[EnvObs, VecEnvObs], space: Optional[spaces.Space] = Non
         if space is None:
             return {k: _as_np(v, None) for k, v in obs.items()}
         else:
+            assert isinstance(space, spaces.Dict), f"Expected Dict, got {type(space)}"
             return {k: _as_np(v, space[k]) for k, v in obs.items()}
 
     elif isinstance(obs, tuple):
         if space is None:
             return tuple(_as_np(o, None) for o in obs)
         else:
+            assert isinstance(space, spaces.Tuple), f"Expected Tuple, got {type(space)}"
             return tuple(_as_np(obs, space[i]) for i, obs in enumerate(obs))
 
     else:

@@ -126,7 +126,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         )
         # pytype:enable=not-instantiable
         self.policy = self.policy.to(self.device)
-        self._last_extractor_states = self.policy.initial_state(n_envs)
+        self._last_extractor_states = self.policy.initial_state(self.n_envs)
 
 
     def collect_rollouts(
@@ -210,7 +210,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     ):
                         terminal_obs = self.policy.obs_maybe_transpose(infos[idx]["terminal_observation"])[0]
                         with th.no_grad():
-                            terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
+                            terminal_value = self.policy.predict_values(terminal_obs)[0]
                             # terminal_lstm_state = (
                             #     lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
                             #     lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),

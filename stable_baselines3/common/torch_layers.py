@@ -1,10 +1,10 @@
-from typing import Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union
 
 import gymnasium as gym
 import torch as th
 from gymnasium import spaces
 from torch import nn
-from torch.utils._pytree import PyTree
+from torch.utils._pytree import PyTree, tree_map
 
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
 from stable_baselines3.common.type_aliases import TensorDict
@@ -18,6 +18,16 @@ T = TypeVar("T")
 class OutAndState(Generic[T]):
     out: T
     state: PyTree
+
+    def apply(self, func: Callable[[T], T]) -> "OutAndState[T]":
+        return OutAndState(func(self.out), self.state)
+
+    def discard_state(self, exception: Exception) -> T:
+        def _error(_x):
+            raise exception
+        tree_map(_error, self.state)
+        return self.out
+
 
 ExtractorOutput = OutAndState[th.Tensor]
 
@@ -40,7 +50,7 @@ class BaseFeaturesExtractor(nn.Module):
     def features_dim(self) -> int:
         return self._features_dim
 
-    def forward(self, observations: PyTree) -> OutAndState[th.Tensor]:
+    def forward(self, observations: PyTree, state: PyTree) -> OutAndState[th.Tensor]:
         raise NotImplementedError()
 
     def _initial_state(self) -> PyTree:
@@ -62,8 +72,8 @@ class FlattenExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, get_flattened_obs_dim(observation_space))
         self.flatten = nn.Flatten()
 
-    def forward(self, observations: th.Tensor) -> OutAndState[th.Tensor]:
-        return OutAndState(self.flatten(observations), ())
+    def forward(self, observations: th.Tensor, state: PyTree = ()) -> OutAndState[th.Tensor]:
+        return OutAndState(self.flatten(observations), state)
 
 
 class NatureCNN(BaseFeaturesExtractor):
@@ -123,8 +133,8 @@ class NatureCNN(BaseFeaturesExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
-    def forward(self, observations: th.Tensor) -> OutAndState[th.Tensor]:
-        return OutAndState(self.linear(self.cnn(observations)), ())
+    def forward(self, observations: th.Tensor, state: PyTree = ()) -> OutAndState[th.Tensor]:
+        return OutAndState(self.linear(self.cnn(observations)), state)
 
 
 def create_mlp(
@@ -275,6 +285,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
         # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
         super().__init__(observation_space, features_dim=1)
 
+        extractors: Dict[str, nn.Module] = {}
         total_concat_size = 0
         for key, subspace in observation_space.spaces.items():
             if is_image_space(subspace, normalized_image=normalized_image):
@@ -285,20 +296,23 @@ class CombinedExtractor(BaseFeaturesExtractor):
                 extractors[key] = nn.Flatten()
                 total_concat_size += get_flattened_obs_dim(subspace)
 
-        self.extractors = nn.ModuleDict(extractors)
+        self.extractors = nn.ModuleDict(extractors)  # type: ignore[assignment]
 
         # Update the features dim manually
         self._features_dim = total_concat_size
 
-    def forward(self, observations: TensorDict) -> OutAndState[th.Tensor]:
-        encoded_tensor_list = []
-        states = []
-        for key, extractor in self.extractors.items():
-            out: OutAndState[th.Tensor] = extractor(observations[key])
-            encoded_tensor_list.append(out.out)
-            states.append(out.state)
+    def _initial_state(self) -> PyTree:
+        return {k: v._initial_state() for k, v in self.extractors.items()}
 
-        return OutAndState(th.cat(encoded_tensor_list, dim=1), tuple(states))
+    def forward(self, observations: TensorDict, state: PyTree) -> OutAndState[th.Tensor]:
+        encoded_tensor_list = []
+        states = {}
+        for key, extractor in self.extractors.items():
+            out: OutAndState[th.Tensor] = extractor(observations[key], state[key])
+            encoded_tensor_list.append(out.out)
+            states[key] = out.state
+
+        return OutAndState(th.cat(encoded_tensor_list, dim=1), states)
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:

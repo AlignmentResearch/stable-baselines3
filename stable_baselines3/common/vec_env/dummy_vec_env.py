@@ -1,7 +1,7 @@
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, cast
 
 import gymnasium as gym
 import numpy as np
@@ -94,7 +94,7 @@ class DummyVecEnv(VecEnv):
                 f"The render mode is {self.render_mode}, but this method assumes it is `rgb_array` to obtain images."
             )
             return [None for _ in self.envs]
-        return th.stack([th.as_tensor(env.render()) for env in self.envs])  # type: ignore[misc]
+        return cast(Sequence[th.Tensor], th.stack([th.as_tensor(env.render()) for env in self.envs]))
 
     def render(self, mode: Optional[str] = None) -> Optional[th.Tensor]:
         """
@@ -111,6 +111,7 @@ class DummyVecEnv(VecEnv):
                 assert isinstance(obs, th.Tensor)
                 self.buf_obs[key][env_idx] = obs
             else:
+                assert isinstance(obs, (dict, tuple))
                 self.buf_obs[key][env_idx] = obs[key]  # type: ignore[call-overload]
 
     def _obs_from_buf(self) -> VecEnvObs:

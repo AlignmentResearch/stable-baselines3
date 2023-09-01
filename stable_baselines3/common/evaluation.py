@@ -79,6 +79,8 @@ def evaluate_policy(
     observations = env.reset()
     if isinstance(observations, dict):
         device = next(iter(observations.values())).device
+    elif isinstance(observations, tuple):
+        device = observations[0].device
     else:
         device = observations.device
     episode_counts = torch.zeros(n_envs, dtype=torch.int64, device=device)

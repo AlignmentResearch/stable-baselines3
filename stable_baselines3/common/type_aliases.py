@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, Su
 import gymnasium as gym
 import numpy as np
 import torch as th
+from torch.utils._pytree import PyTree
 
 from stable_baselines3.common import callbacks, vec_env
 
@@ -79,11 +80,11 @@ class TrainFreq(NamedTuple):
 class PolicyPredictor(Protocol):
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -96,4 +97,13 @@ class PolicyPredictor(Protocol):
         :param deterministic: Whether or not to return deterministic actions.
         :return: the model's action and the next hidden state
             (used in recurrent policies)
+        """
+
+    def initial_state(self, n_envs: Optional[int]) -> PyTree:
+        """
+        Get the initial recurrent states for the model.
+        Used in recurrent policies.
+
+        :param n_envs: Batch dimension of the recurrent state. If None, states are not batched.
+        :return: the initial recurrent states
         """

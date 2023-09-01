@@ -2,6 +2,7 @@ import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
+from stable_baselines3.common.torch_layers import OutAndState
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
@@ -232,7 +233,7 @@ class DQN(OffPolicyAlgorithm):
         state: Optional[Tuple[th.Tensor, ...]] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
+    ) -> OutAndState[Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]]:
         """
         Overrides the base_class predict function to include epsilon-greedy exploration.
 
@@ -253,9 +254,10 @@ class DQN(OffPolicyAlgorithm):
                 action = th.stack([th.as_tensor(self.action_space.sample()) for _ in range(n_batch)], dim=0)
             else:
                 action = th.as_tensor(self.action_space.sample())
+            preds = OutAndState((action, state), self._last_extractor_states)
         else:
-            action, state = self.policy.predict(observation, state, episode_start, deterministic)
-        return action, state
+            preds = self.policy.predict(observation, state, episode_start, deterministic)
+        return preds
 
     def learn(
         self: SelfDQN,
