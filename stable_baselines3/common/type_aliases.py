@@ -1,7 +1,7 @@
 """Common aliases for type hints"""
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, Union, TypeVar
 
 import gymnasium as gym
 import numpy as np
@@ -26,6 +26,8 @@ MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.Ba
 # and ouputs a scalar (e.g. learning rate, clip range, ...)
 Schedule = Callable[[float], float]
 
+TensorObsType = TypeVar("TensorObsType", bound=Union[th.Tensor, TensorDict])
+
 
 class RolloutBufferSamples(NamedTuple):
     observations: th.Tensor
@@ -34,6 +36,7 @@ class RolloutBufferSamples(NamedTuple):
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
+    extractor_states: PyTree
 
 
 class DictRolloutBufferSamples(NamedTuple):
@@ -43,6 +46,7 @@ class DictRolloutBufferSamples(NamedTuple):
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
+    extractor_states: PyTree
 
 
 class ReplayBufferSamples(NamedTuple):
@@ -51,6 +55,7 @@ class ReplayBufferSamples(NamedTuple):
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
+    extractor_states: PyTree
 
 
 class DictReplayBufferSamples(NamedTuple):
@@ -59,6 +64,7 @@ class DictReplayBufferSamples(NamedTuple):
     next_observations: TensorDict
     dones: th.Tensor
     rewards: th.Tensor
+    extractor_states: PyTree
 
 
 class RolloutReturn(NamedTuple):

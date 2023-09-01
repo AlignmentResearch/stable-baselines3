@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from gymnasium import spaces
+from stable_baselines3.common.type_aliases import TensorObsType
 import torch as th
 
 from stable_baselines3.common import utils
@@ -227,7 +228,7 @@ class VecNormalize(VecEnvWrapper):
         assert obs.is_floating_point(), ".to(obs) in the next line assumes obs is floating"
         return (obs * th.sqrt(obs_rms.var + self.epsilon).to(obs)) + obs_rms.mean.to(obs)
 
-    def normalize_obs(self, obs: Union[th.Tensor, Dict[str, th.Tensor]]) -> Union[th.Tensor, Dict[str, th.Tensor]]:
+    def normalize_obs(self, obs: TensorObsType) -> TensorObsType:
         """
         Normalize observations using this VecNormalize's observations statistics.
         Calling this method does not update statistics.
