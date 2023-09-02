@@ -209,14 +209,10 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     ):
                         terminal_obs = self.policy.obs_maybe_transpose(infos[idx]["terminal_observation"])[0]
                         with th.no_grad():
-                            terminal_value = self.policy.predict_values(terminal_obs)[0]
-                            # terminal_lstm_state = (
-                            #     lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
-                            #     lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
-                            # )
-                            # terminal_lstm_state = None
-                            # episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
-                            # terminal_value, _ = self.policy.predict_values_with_states(terminal_obs, terminal_lstm_state, episode_starts)[0]
+                            terminal_extractor_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), extractor_states)
+                            episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
+                            terminal_value_and_state = self.policy.predict(terminal_obs, terminal_extractor_state, episode_starts)
+                            terminal_value = terminal_value_and_state.out
                         rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
