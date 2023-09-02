@@ -12,7 +12,7 @@ from stable_baselines3.common.preprocessing import check_for_nested_spaces
 from stable_baselines3.common.vec_env.base_vec_env import EnvObs, VecEnvObs
 
 
-def as_torch_dtype(dtype: Union[th.dtype, np.typing.DtypeLike]) -> th.dtype:
+def as_torch_dtype(dtype: Union[th.dtype, np.typing.DTypeLike, None]) -> th.dtype:
     """
     Convert a numpy dtype to a PyTorch dtype, if it is not already one.
 

@@ -12,7 +12,7 @@ from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 import torch as th
 from gymnasium import spaces
 from torch import nn
-from torch.utils._pytree import PyTree, tree_flatten
+from optree import PyTree, tree_flatten
 
 from stable_baselines3.common.distributions import (
     BernoulliDistribution,
@@ -339,7 +339,7 @@ class BasePolicy(BaseModel, ABC):
         state: Optional[PyTree] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> OutAndState[Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]]:
+    ) -> OutAndState[th.Tensor]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).

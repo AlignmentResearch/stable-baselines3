@@ -2,8 +2,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-import numpy as np
-from stable_baselines3.common.pytree_dataclass import tree_map
+import optree as ot
 import torch as th
 from gymnasium import spaces
 
@@ -11,7 +10,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
 
@@ -162,7 +161,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_start()
 
         # Recurrent state from the feature extractor, that will be updated
-        extractor_states = tree_map(lambda x: x.clone(), self._last_extractor_states)
+        extractor_states = ot.tree_map(lambda x: x.clone(), unwrap(self._last_extractor_states))
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -227,7 +226,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self._last_episode_starts,  # type: ignore[arg-type]
                 values,
                 log_probs,
-                # self._last_extractor_states,
+                unwrap(self._last_extractor_states),
             )
             self._last_obs = new_obs  # type: ignore[assignment]
             self._last_episode_starts = dones

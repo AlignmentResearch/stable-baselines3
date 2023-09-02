@@ -10,10 +10,9 @@ from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, T
 
 import gymnasium as gym
 import numpy as np
-from stable_baselines3.common.torch_layers import OutAndState
 import torch as th
-from torch.util._pytree import PyTree
 from gymnasium import spaces
+from optree import PyTree
 
 from stable_baselines3.common import utils
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback
@@ -24,6 +23,7 @@ from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
 from stable_baselines3.common.save_util import load_from_zip_file, recursive_getattr, recursive_setattr, save_to_zip_file
+from stable_baselines3.common.torch_layers import OutAndState
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, TensorDict
 from stable_baselines3.common.utils import (
     check_for_correct_spaces,
@@ -147,7 +147,7 @@ class BaseAlgorithm(ABC):
         self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
         self._last_original_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
-        self._last_extractor_states: Optional[PyTree] = None
+        self._last_extractor_states: Optional[PyTree[th.Tensor]] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde
@@ -538,24 +538,24 @@ class BaseAlgorithm(ABC):
     def predict(
         self,
         observation: Union[th.Tensor, Dict[str, th.Tensor]],
-        state: Optional[Tuple[th.Tensor, ...]] = None,
+        state: Optional[PyTree[th.Tensor]] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> OutAndState[Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]]:
+    ) -> OutAndState[th.Tensor]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
 
         :param observation: the input observation
         :param state: The last hidden states (can be None, used in recurrent policies)
-        :param episode_start: The last masks (can be None, used in recurrent policies)
+        :param episode_start: The lastmasks (can be None, used in recurrent policies)
             this correspond to beginning of episodes,
             where the hidden states of the RNN must be reset.
         :param deterministic: Whether or not to return deterministic actions.
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
-        return self.policy.predict(observation, state, episode_start, deterministic)
+        return self.policy.predict(observation, state, episode_start, deterministic)  # type: ignore[arg-type]
 
     def set_random_seed(self, seed: Optional[int] = None) -> None:
         """

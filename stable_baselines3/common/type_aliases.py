@@ -1,12 +1,12 @@
 """Common aliases for type hints"""
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, Union, TypeVar
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, TypeVar, Union
 
 import gymnasium as gym
 import numpy as np
 import torch as th
-from torch.utils._pytree import PyTree
+from optree import PyTree
 
 from stable_baselines3.common import callbacks, vec_env
 
@@ -27,6 +27,7 @@ MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.Ba
 Schedule = Callable[[float], float]
 
 TensorObsType = TypeVar("TensorObsType", bound=Union[th.Tensor, TensorDict])
+T = TypeVar("T")
 
 
 class RolloutBufferSamples(NamedTuple):
@@ -113,3 +114,8 @@ class PolicyPredictor(Protocol):
         :param n_envs: Batch dimension of the recurrent state. If None, states are not batched.
         :return: the initial recurrent states
         """
+
+def unwrap(x: Optional[T]) -> T:
+    if x is None:
+        raise ValueError("Expected a value, got None")
+    return x

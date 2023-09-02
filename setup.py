@@ -103,6 +103,7 @@ setup(
         "gymnasium>=0.28.1,<0.30",
         "numpy>=1.20",
         "torch>=1.13",
+        "optree>=0.9",
         # For saving models
         "cloudpickle",
         # For reading logs

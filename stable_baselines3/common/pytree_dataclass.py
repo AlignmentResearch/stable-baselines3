@@ -1,16 +1,12 @@
-from _typeshed import DataclassInstance
 import dataclasses
-from typing import Optional, Sequence, Type, TypeVar
+from typing import Optional, Sequence, Type
 
-from torch.utils._pytree import Context, PyTree, _register_pytree_node, tree_map
+import optree as ot
 from typing_extensions import dataclass_transform
 
-__all__ = ["register_dataclass_as_pytree", "dataclass_frozen_pytree", "tree_map"]
+__all__ = ["register_dataclass_as_pytree", "dataclass_frozen_pytree"]
 
-
-T = TypeVar("T")
-
-def register_dataclass_as_pytree(Cls: type[T], whitelist: Optional[Sequence[str]] = None) -> type[DataclassInstance]:
+def register_dataclass_as_pytree(Cls, whitelist: Optional[Sequence[str]] = None):
     """Register a dataclass as a pytree, using the given whitelist of field names.
 
     :param Cls: The dataclass to register.
@@ -22,18 +18,18 @@ def register_dataclass_as_pytree(Cls: type[T], whitelist: Optional[Sequence[str]
 
     names = tuple(f.name for f in dataclasses.fields(Cls) if whitelist is None or f.name in whitelist)
 
-    def flatten_fn(inst: T) -> tuple[list[PyTree], Context]:
-        return list(getattr(inst, n) for n in names), names
+    def flatten_fn(inst):
+        return (getattr(inst, n) for n in names), None, names
 
-    def unflatten_fn(values: list[PyTree], names: Context) -> DataclassInstance:
+    def unflatten_fn(context, values):
         return Cls(**dict(zip(names, values)))
 
-    _register_pytree_node(Cls, flatten_fn, unflatten_fn)
+    ot.register_pytree_node(Cls, flatten_fn, unflatten_fn, namespace="stable-baselines3")
     return Cls
 
 
 @dataclass_transform()
-def dataclass_frozen_pytree(Cls: Type, **kwargs) -> Type:
+def dataclass_frozen_pytree(Cls: Type, **kwargs) -> type:
     """Decorator to make a frozen dataclass and register it as a PyTree."""
     dataCls = dataclasses.dataclass(frozen=True, slots=True, **kwargs)(Cls)
     register_dataclass_as_pytree(dataCls)

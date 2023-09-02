@@ -1,10 +1,9 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
-from stable_baselines3.td3.policies import OutAndState
 
 import torch as th
 from gymnasium import spaces
+from optree import PyTree
 from torch import nn
-from torch.utils._pytree import PyTree
 
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
@@ -18,6 +17,7 @@ from stable_baselines3.common.torch_layers import (
     get_actor_critic_arch,
 )
 from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.td3.policies import OutAndState
 
 # CAP the standard deviation of the actor
 LOG_STD_MAX = 2

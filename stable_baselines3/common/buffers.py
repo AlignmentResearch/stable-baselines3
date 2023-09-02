@@ -3,19 +3,20 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional, Union
 
 import numpy as np
+import optree as op
 import torch as th
 from gymnasium import spaces
-from th.utils._pytree import PyTree, tree_map
+from optree import PyTree
 
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     DictRolloutBufferSamples,
-    TensorDict,
-    TensorObsType,
     ReplayBufferSamples,
     RolloutBufferSamples,
+    TensorDict,
     TensorIndex,
+    TensorObsType,
 )
 from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
@@ -46,7 +47,7 @@ class BaseBuffer(ABC):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree,
+        extractor_state_example: PyTree[th.Tensor],
         samples_device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "auto",
         n_envs: int = 1,
@@ -57,7 +58,7 @@ class BaseBuffer(ABC):
         self.action_space = action_space
         self.obs_shape = get_obs_shape(observation_space)
         # Remove most memory usage for the extractor state example.
-        self.extractor_state_example = tree_map(lambda x: th.zeros((), dtype=x.dtype).expand_as(x), extractor_state_example)
+        self.extractor_state_example = op.tree_map(lambda x: th.zeros((), dtype=x.dtype).expand_as(x), extractor_state_example)
 
         self.action_dim = get_action_dim(action_space)
         self.pos = 0
@@ -174,7 +175,7 @@ class ReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree,
+        extractor_state_example: PyTree[th.Tensor],
         samples_device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "auto",
         n_envs: int = 1,
@@ -233,7 +234,7 @@ class ReplayBuffer(BaseBuffer):
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
         self.timeouts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32)
-        self.extractor_states = tree_map(
+        self.extractor_states = op.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.samples_device),
             self.extractor_state_example,
         )
@@ -261,7 +262,7 @@ class ReplayBuffer(BaseBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree,
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         # Reshape needed when using multiple envs with discrete observations
         # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
@@ -285,7 +286,7 @@ class ReplayBuffer(BaseBuffer):
         self.actions[self.pos].copy_(action, non_blocking=True)
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
-        _ = tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
+        _ = op.tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
@@ -343,7 +344,7 @@ class ReplayBuffer(BaseBuffer):
                 (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1)
             ),
             rewards=self.to_samples_device(self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env)),
-            extractor_states=tree_map(lambda x: self.to_samples_device(x[batch_inds, env_indices]), self.extractor_states),
+            extractor_states=op.tree_map(lambda x: self.to_samples_device(x[batch_inds, env_indices]), self.extractor_states),
         )
 
     @staticmethod
@@ -394,14 +395,14 @@ class RolloutBuffer(BaseBuffer):
     episode_starts: th.Tensor
     log_probs: th.Tensor
     values: th.Tensor
-    extractor_states: PyTree
+    extractor_states: PyTree[th.Tensor]
 
     def __init__(
         self,
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree,
+        extractor_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         gae_lambda: float = 1,
         gamma: float = 0.99,
@@ -423,7 +424,7 @@ class RolloutBuffer(BaseBuffer):
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.samples_device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.samples_device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.samples_device)
-        self.extractor_states = tree_map(
+        self.extractor_states = op.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.samples_device),
             self.extractor_state_example,
         )
@@ -474,7 +475,7 @@ class RolloutBuffer(BaseBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: th.Tensor,
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         """
         :param obs: Observation
@@ -505,7 +506,7 @@ class RolloutBuffer(BaseBuffer):
         self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
         self.values[self.pos].copy_(value.flatten(), non_blocking=True)
         self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
-        _ = tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
+        _ = op.tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -542,7 +543,7 @@ class RolloutBuffer(BaseBuffer):
             old_log_prob=self.to_samples_device(self.log_probs[batch_inds].flatten()),
             advantages=self.to_samples_device(self.advantages[batch_inds].flatten()),
             returns=self.to_samples_device(self.returns[batch_inds].flatten()),
-            extractor_states=tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
+            extractor_states=op.tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
         )
 
 
@@ -568,7 +569,7 @@ class DictReplayBuffer(ReplayBuffer):
         buffer_size: int,
         observation_space: spaces.Dict,
         action_space: spaces.Space,
-        extractor_state_example: PyTree,
+        extractor_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -643,7 +644,7 @@ class DictReplayBuffer(ReplayBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree
+        extractor_states: PyTree[th.Tensor]
     ) -> None:  # pytype: disable=signature-mismatch
         # Copy to avoid modification by reference
         assert isinstance(self.observations, dict) and isinstance(self.observation_space, spaces.Dict) and isinstance(self.obs_shape, dict) and isinstance(self.next_observations, dict)
@@ -665,7 +666,7 @@ class DictReplayBuffer(ReplayBuffer):
         self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
-        _ = tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
+        _ = op.tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
@@ -724,7 +725,7 @@ class DictReplayBuffer(ReplayBuffer):
                 self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])
             ).reshape(-1, 1),
             rewards=self.to_samples_device(self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env)),
-            extractor_states=tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
+            extractor_states=op.tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
         )
 
 
@@ -804,7 +805,7 @@ class DictRolloutBuffer(RolloutBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: PyTree,
+        extractor_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         """
         :param obs: Observation
@@ -837,7 +838,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
         self.values[self.pos].copy_(value.flatten(), non_blocking=True)
         self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
-        _ = tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
+        _ = op.tree_map(lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -875,5 +876,5 @@ class DictRolloutBuffer(RolloutBuffer):
             old_log_prob=self.to_samples_device(self.log_probs[batch_inds].flatten()),
             advantages=self.to_samples_device(self.advantages[batch_inds].flatten()),
             returns=self.to_samples_device(self.returns[batch_inds].flatten()),
-            extractor_states=tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
+            extractor_states=op.tree_map(lambda x: self.to_samples_device(x[batch_inds]), self.extractor_states),
         )

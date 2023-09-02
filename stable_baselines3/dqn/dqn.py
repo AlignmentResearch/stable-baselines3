@@ -2,18 +2,19 @@ import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from stable_baselines3.common.torch_layers import OutAndState
 import torch as th
 from gymnasium import spaces
+from optree import PyTree
 from torch.nn import functional as F
 
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.torch_layers import OutAndState
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
-from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
 from stable_baselines3.common.vec_env.util import obs_as_tensor
+from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
 
 SelfDQN = TypeVar("SelfDQN", bound="DQN")
 
@@ -230,10 +231,10 @@ class DQN(OffPolicyAlgorithm):
     def predict(
         self,
         observation: Union[th.Tensor, Dict[str, th.Tensor]],
-        state: Optional[Tuple[th.Tensor, ...]] = None,
+        extractor_state: Optional[PyTree[th.Tensor]] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> OutAndState[Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]]:
+    ) -> OutAndState[th.Tensor]:
         """
         Overrides the base_class predict function to include epsilon-greedy exploration.
 
@@ -244,7 +245,11 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
-        observation = obs_as_tensor(observation, device=self.device)
+        obs_ = obs_as_tensor(observation, device=self.device)
+        assert not isinstance(obs_, tuple)
+        observation = obs_
+        preds = self.policy.predict(observation, extractor_state, episode_start, deterministic)
+
         if not deterministic and th.rand(()) < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
                 if isinstance(observation, dict):
@@ -254,9 +259,7 @@ class DQN(OffPolicyAlgorithm):
                 action = th.stack([th.as_tensor(self.action_space.sample()) for _ in range(n_batch)], dim=0)
             else:
                 action = th.as_tensor(self.action_space.sample())
-            preds = OutAndState((action, state), self._last_extractor_states)
-        else:
-            preds = self.policy.predict(observation, state, episode_start, deterministic)
+            preds = OutAndState(action, preds.state)
         return preds
 
     def learn(
