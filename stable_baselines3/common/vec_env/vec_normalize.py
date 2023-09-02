@@ -4,14 +4,13 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from gymnasium import spaces
-from stable_baselines3.common.type_aliases import TensorObsType
 import torch as th
 
 from stable_baselines3.common import utils
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.running_mean_std import RunningMeanStd
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
-from stable_baselines3.common.vec_env.util import clone_obs
+from stable_baselines3.common.vec_env.util import TensorObsType, clone_obs
 
 
 class VecNormalize(VecEnvWrapper):

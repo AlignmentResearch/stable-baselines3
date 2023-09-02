@@ -26,9 +26,7 @@ MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.Ba
 # and ouputs a scalar (e.g. learning rate, clip range, ...)
 Schedule = Callable[[float], float]
 
-TensorObsType = TypeVar("TensorObsType", bound=Union[th.Tensor, TensorDict])
 T = TypeVar("T")
-
 
 class RolloutBufferSamples(NamedTuple):
     observations: th.Tensor
@@ -37,7 +35,7 @@ class RolloutBufferSamples(NamedTuple):
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    extractor_states: PyTree
+    extractor_states: PyTree[th.Tensor]
 
 
 class DictRolloutBufferSamples(NamedTuple):
@@ -47,7 +45,7 @@ class DictRolloutBufferSamples(NamedTuple):
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    extractor_states: PyTree
+    extractor_states: PyTree[th.Tensor]
 
 
 class ReplayBufferSamples(NamedTuple):
@@ -56,7 +54,7 @@ class ReplayBufferSamples(NamedTuple):
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
-    extractor_states: PyTree
+    extractor_states: PyTree[th.Tensor]
 
 
 class DictReplayBufferSamples(NamedTuple):
@@ -65,7 +63,7 @@ class DictReplayBufferSamples(NamedTuple):
     next_observations: TensorDict
     dones: th.Tensor
     rewards: th.Tensor
-    extractor_states: PyTree
+    extractor_states: PyTree[th.Tensor]
 
 
 class RolloutReturn(NamedTuple):
@@ -106,7 +104,7 @@ class PolicyPredictor(Protocol):
             (used in recurrent policies)
         """
 
-    def initial_state(self, n_envs: Optional[int]) -> PyTree:
+    def initial_state(self, n_envs: Optional[int]) -> PyTree[th.Tensor]:
         """
         Get the initial recurrent states for the model.
         Used in recurrent policies.

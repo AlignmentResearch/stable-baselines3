@@ -2,7 +2,7 @@
 Helpers for dealing with vectorized environments.
 """
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TypeVar
 
 import numpy as np
 from gymnasium import spaces
@@ -11,6 +11,7 @@ import torch as th
 from stable_baselines3.common.preprocessing import check_for_nested_spaces
 from stable_baselines3.common.vec_env.base_vec_env import EnvObs, VecEnvObs
 
+TensorObsType = TypeVar("TensorObsType", bound=Union[th.Tensor, Dict[str, th.Tensor]])
 
 def as_torch_dtype(dtype: Union[th.dtype, np.typing.DTypeLike, None]) -> th.dtype:
     """

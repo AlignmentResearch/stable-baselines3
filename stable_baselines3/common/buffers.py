@@ -16,11 +16,10 @@ from stable_baselines3.common.type_aliases import (
     RolloutBufferSamples,
     TensorDict,
     TensorIndex,
-    TensorObsType,
 )
 from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
-from stable_baselines3.common.vec_env.util import as_torch_dtype
+from stable_baselines3.common.vec_env.util import TensorObsType, as_torch_dtype
 
 try:
     # Check memory used by replay buffer when possible
