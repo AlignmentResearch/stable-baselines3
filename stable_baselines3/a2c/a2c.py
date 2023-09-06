@@ -1,5 +1,6 @@
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
+import optree as ot
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
@@ -122,6 +123,11 @@ class A2C(OnPolicyAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
+
+        def _not_impl(_):
+            raise NotImplementedError("Stateful policies not implemented for A2C")
+        ot.tree_map(_not_impl, self._last_extractor_states)
+
     def train(self) -> None:
         """
         Update policy using the currently gathered
@@ -140,7 +146,7 @@ class A2C(OnPolicyAlgorithm):
                 # Convert discrete action from float to long
                 actions = actions.long().flatten()
 
-            vle = self.policy.evaluate_actions(rollout_data.observations, actions)
+            vle = self.policy.evaluate_actions(rollout_data.observations, actions, self._last_extractor_states)
             values, log_prob, entropy = vle.out
             values = values.flatten()
 

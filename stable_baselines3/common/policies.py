@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
+from stable_baselines3.common import pytree_dataclass
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 import torch as th
 from gymnasium import spaces
@@ -123,7 +124,7 @@ class BaseModel(nn.Module):
         """Helper method to create a features extractor."""
         return self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
 
-    def extract_features(self, obs: TorchGymObs, state: PyTree, features_extractor: BaseFeaturesExtractor) -> ExtractorOutput:
+    def extract_features(self, obs: TorchGymObs, extractor_state: PyTree, features_extractor: BaseFeaturesExtractor) -> ExtractorOutput:
         """
         Preprocess the observation if needed and extract features.
 
@@ -132,7 +133,7 @@ class BaseModel(nn.Module):
          :return: The extracted features
         """
         preprocessed_obs = preprocess_obs(obs, self.observation_space, normalize_images=self.normalize_images)
-        return features_extractor(preprocessed_obs, state)
+        return features_extractor(preprocessed_obs, extractor_state)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         """
@@ -232,7 +233,6 @@ class BaseModel(nn.Module):
             )
         return vectorized_env
 
-
     def obs_to_tensor(self, observation: TorchGymObs) -> Tuple[th.Tensor, bool]:
         """
         Convert an input observation to a PyTorch tensor that can be fed to a model.
@@ -245,7 +245,6 @@ class BaseModel(nn.Module):
         observation = obs_as_tensor(observation, device=self.device)
         observation, vectorized_env = self.obs_maybe_transpose(observation)
         return observation, vectorized_env
-
 
     def obs_maybe_transpose(self, observation: TorchGymObs) -> Tuple[th.Tensor, bool]:
         """
@@ -269,7 +268,6 @@ class BaseModel(nn.Module):
             # Add batch dimension if needed
             obs = obs.reshape((-1, *obs_space.shape))
             return obs
-
 
         if isinstance(observation, dict):
             observation = {k: handle_obs(obs, self.observation_space.spaces[k]) for k, obs in observation.items()}
@@ -330,7 +328,7 @@ class BasePolicy(BaseModel, ABC):
         :return: Taken action according to the policy
         """
 
-    def initial_state(self, n_envs: Optional[int]) -> PyTree:
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
         return self.features_extractor.initial_state(n_envs)
 
     def predict(
@@ -360,7 +358,7 @@ class BasePolicy(BaseModel, ABC):
 
         if state is None:
             state = self.initial_state(len(observation) if vectorized_env else None)
-            if len(tree_flatten) != 0:
+            if len(tree_flatten(state)[0]) != 0:
                 raise ValueError("The state must be passed in when using recurrent policies.")
 
         with th.no_grad():
@@ -404,6 +402,12 @@ class BasePolicy(BaseModel, ABC):
         """
         low, high = map(th.as_tensor, (self.action_space.low, self.action_space.high))
         return low + (0.5 * (scaled_action + 1.0) * (high - low))
+
+
+@dataclass_frozen_pytree
+class PolicyValueExtractorState:
+    pi_state: PyTree[th.Tensor]
+    vf_state: PyTree[th.Tensor]
 
 
 class ActorCriticPolicy(BasePolicy):
@@ -549,6 +553,12 @@ class ActorCriticPolicy(BasePolicy):
         )
         return data
 
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        if self.share_features_extractor:
+            return self.features_extractor.initial_state(n_envs)
+        else:
+            return PolicyValueExtractorState(pi_state=self.pi_features_extractor.initial_state(n_envs), vf_state=self.vf_features_extractor.initial_state(n_envs))
+
     def reset_noise(self, n_envs: int = 1) -> None:
         """
         Sample new weights for the exploration matrix.
@@ -624,7 +634,7 @@ class ActorCriticPolicy(BasePolicy):
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
 
-    def forward(self, obs: TorchGymObs, deterministic: bool = False) -> OutAndState[Tuple[th.Tensor, th.Tensor, th.Tensor]]:
+    def forward(self, obs: TorchGymObs, extractor_state: PyTree[th.Tensor], deterministic: bool = False) -> OutAndState[Tuple[th.Tensor, th.Tensor, th.Tensor]]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -633,16 +643,14 @@ class ActorCriticPolicy(BasePolicy):
         :return: action, value and log probability of the action
         """
         # Preprocess the observation if needed
-        extractor_outs = self.extract_features(obs)
+        extractor_outs = self.extract_features(obs, extractor_state=extractor_state)
         if not isinstance(extractor_outs, tuple):
             assert self.share_features_extractor
             latent_pi, latent_vf = self.mlp_extractor(extractor_outs.out)
-            extractor_state = extractor_outs.state
         else:
-            pi_features, vf_features = extractor_outs
-            latent_pi = self.mlp_extractor.forward_actor(pi_features.out)
-            latent_vf = self.mlp_extractor.forward_critic(vf_features.out)
-            extractor_state = (pi_features.state, vf_features.state)
+            pi_features, vf_features = extractor_outs.out
+            latent_pi = self.mlp_extractor.forward_actor(pi_features)
+            latent_vf = self.mlp_extractor.forward_critic(vf_features)
 
         # Evaluate the values for the given observations
         values = self.value_net(latent_vf)
@@ -650,9 +658,11 @@ class ActorCriticPolicy(BasePolicy):
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
         actions = actions.reshape((-1, *self.action_space.shape))
-        return OutAndState((actions, values, log_prob), state=extractor_state)
+        return OutAndState((actions, values, log_prob), state=extractor_outs.state)
 
-    def extract_features(self, obs: TorchGymObs, extractor_state: PyTree) -> Union[ExtractorOutput, Tuple[ExtractorOutput, ExtractorOutput]]:
+    def extract_features(
+        self, obs: TorchGymObs, extractor_state: PyTree
+    ) -> OutAndState[Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]]:
         """
         Preprocess the observation if needed and extract features.
 
@@ -664,7 +674,7 @@ class ActorCriticPolicy(BasePolicy):
         else:
             pi_out = super().extract_features(obs, extractor_state, self.pi_features_extractor)
             vf_out = super().extract_features(obs, extractor_state, self.vf_features_extractor)
-            return pi_out, vf_out
+            return OutAndState((pi_out.out, vf_out.out), PolicyValueExtractorState(pi_out.state, vf_out.state))
 
     def _get_action_dist_from_latent(self, latent_pi: th.Tensor) -> Distribution:
         """
@@ -691,7 +701,7 @@ class ActorCriticPolicy(BasePolicy):
         else:
             raise ValueError("Invalid action distribution")
 
-    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> OutAndState[th.Tensor]:
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState:
         """
         Get the action according to the policy for a given observation.
 
@@ -699,10 +709,12 @@ class ActorCriticPolicy(BasePolicy):
         :param deterministic: Whether to use stochastic or deterministic actions
         :return: Taken action according to the policy
         """
-        dist = self.get_distribution(observation)
+        dist = self.get_distribution(observation, extractor_state)
         return OutAndState(dist.out.get_actions(deterministic=deterministic), dist.state)
 
-    def evaluate_actions(self, obs: TorchGymObs, actions: th.Tensor) -> OutAndState[Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]]:
+    def evaluate_actions(
+        self, obs: TorchGymObs, actions: th.Tensor, extractor_states: PyTree[th.Tensor],
+    ) -> OutAndState[Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]]:
         """
         Evaluate actions according to the current policy,
         given the observations.
@@ -713,41 +725,39 @@ class ActorCriticPolicy(BasePolicy):
             and entropy of the action distribution.
         """
         # Preprocess the observation if needed
-        extractor_out = self.extract_features(obs, states)
+        extractor_out = self.extract_features(obs, extractor_states)
         if not isinstance(extractor_out, tuple):
             assert self.share_features_extractor
             latent_pi, latent_vf = self.mlp_extractor(extractor_out.out)
-            extractor_state = extractor_out.state
         else:
             pi_out, vf_out = extractor_out
             latent_pi = self.mlp_extractor.forward_actor(pi_out.out)
             latent_vf = self.mlp_extractor.forward_critic(vf_out.out)
-            extractor_state = (pi_out.state, vf_out.state)
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf).squeeze(-1)
         entropy = distribution.entropy()
-        return OutAndState((values, log_prob, entropy), extractor_state)
+        return OutAndState((values, log_prob, entropy), extractor_out.state)
 
-    def get_distribution(self, obs: TorchGymObs) -> OutAndState[Distribution]:
+    def get_distribution(self, obs: TorchGymObs, extractor_state: PyTree[th.Tensor]) -> OutAndState[Distribution]:
         """
         Get the current policy distribution given the observations.
 
         :param obs:
         :return: the action distribution.
         """
-        extractor_out = super().extract_features(obs, self.pi_features_extractor)
+        extractor_out = super().extract_features(obs, extractor_state, self.pi_features_extractor)
         latent_pi = self.mlp_extractor.forward_actor(extractor_out.out)
         return OutAndState(self._get_action_dist_from_latent(latent_pi), extractor_out.state)
 
-    def predict_values(self, obs: TorchGymObs) -> OutAndState[th.Tensor]:
+    def predict_values(self, obs: TorchGymObs, extractor_state: PyTree[th.Tensor]) -> OutAndState[th.Tensor]:
         """
         Get the estimated values according to the current policy given the observations.
 
         :param obs: Observation
         :return: the estimated values.
         """
-        extractor_out = super().extract_features(obs, self.vf_features_extractor)
+        extractor_out = super().extract_features(obs, extractor_state, self.vf_features_extractor)
         latent_vf = self.mlp_extractor.forward_critic(extractor_out.out)
         return OutAndState(self.value_net(latent_vf).squeeze(-1), extractor_out.state)
 
@@ -955,22 +965,22 @@ class ContinuousCritic(BaseModel):
             self.add_module(f"qf{idx}", q_net)
             self.q_networks.append(q_net)
 
-    def forward(self, obs: TorchGymObs, actions: th.Tensor) -> OutAndState[th.Tensor]:
+    def forward(self, obs: TorchGymObs, actions: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
         # Learn the features extractor using the policy loss only
         # when the features_extractor is shared with the actor
         with th.set_grad_enabled(not self.share_features_extractor):
-            extractor_out = self.extract_features(obs, self.features_extractor)
+            extractor_out = self.extract_features(obs, extractor_state, self.features_extractor)
         qvalue_input = th.cat([extractor_out.out, actions], dim=1)
         values = tuple(q_net(qvalue_input) for q_net in self.q_networks)
         return OutAndState(values, extractor_out.state)
 
-    def q1_forward(self, obs: TorchGymObs, actions: th.Tensor) -> OutAndState[th.Tensor]:
+    def q1_forward(self, obs: TorchGymObs, actions: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
         """
         Only predict the Q-value using the first network.
         This allows to reduce computation when all the estimates are not needed
         (e.g. when updating the policy in TD3).
         """
         with th.no_grad():
-            extractor_out = self.extract_features(obs, self.features_extractor)
+            extractor_out = self.extract_features(obs, extractor_state, self.features_extractor)
         value = self.q_networks[0](th.cat([extractor_out.out, actions], dim=1))
         return OutAndState(value, extractor_out.state)

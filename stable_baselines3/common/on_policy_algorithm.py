@@ -107,18 +107,6 @@ class OnPolicyAlgorithm(BaseAlgorithm):
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
-
-        buffer_cls = DictRolloutBuffer if isinstance(self.observation_space, spaces.Dict) else RolloutBuffer
-
-        self.rollout_buffer = buffer_cls(
-            self.n_steps,
-            self.observation_space,
-            self.action_space,
-            device=self.device,
-            gamma=self.gamma,
-            gae_lambda=self.gae_lambda,
-            n_envs=self.n_envs,
-        )
         # pytype:disable=not-instantiable
         self.policy = self.policy_class(  # type: ignore[assignment]
             self.observation_space, self.action_space, self.lr_schedule, use_sde=self.use_sde, **self.policy_kwargs
@@ -126,6 +114,19 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         # pytype:enable=not-instantiable
         self.policy = self.policy.to(self.device)
         self._last_extractor_states = self.policy.initial_state(self.n_envs)
+
+        buffer_cls = DictRolloutBuffer if isinstance(self.observation_space, spaces.Dict) else RolloutBuffer
+
+        self.rollout_buffer = buffer_cls(
+            self.n_steps,
+            self.observation_space,
+            self.action_space,
+            extractor_state_example=self.policy.initial_state(),
+            device=self.device,
+            gamma=self.gamma,
+            gae_lambda=self.gae_lambda,
+            n_envs=self.n_envs,
+        )
 
 
     def collect_rollouts(
@@ -171,7 +172,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                policy_out = self.policy(obs_tensor)  #, extractor_states, self._last_episode_starts)
+                policy_out = self.policy(obs_tensor, extractor_states)
                 extractor_states = policy_out.state
                 actions, values, log_probs = policy_out.out
             actions = actions.to(env.device)
@@ -212,7 +213,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                             terminal_extractor_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), extractor_states)
                             episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
                             terminal_value_and_state = self.policy.predict(terminal_obs, terminal_extractor_state, episode_starts)
-                            terminal_value = terminal_value_and_state.out
+                            terminal_value = terminal_value_and_state.out.squeeze()
                         rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
@@ -230,7 +231,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
+            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), extractor_state=extractor_states)  # type: ignore[arg-type]
 
         rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
 

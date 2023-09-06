@@ -1,10 +1,11 @@
 """Common aliases for type hints"""
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, TypeVar, Union
 
 import gymnasium as gym
 import numpy as np
+from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 import torch as th
 from optree import PyTree
 
@@ -26,9 +27,28 @@ MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.Ba
 # and ouputs a scalar (e.g. learning rate, clip range, ...)
 Schedule = Callable[[float], float]
 
+EMPTY_PYTREE: PyTree[th.Tensor] = ()  # type: ignore[assignment]
+
 T = TypeVar("T")
 
-class RolloutBufferSamples(NamedTuple):
+@dataclass_frozen_pytree
+class OutAndState(Generic[T]):
+    out: T
+    state: PyTree[th.Tensor]
+
+    def apply(self, func: Callable[[T], T]) -> "OutAndState[T]":
+        return OutAndState(func(self.out), self.state)
+
+    def discard_state(self, exception: Exception) -> T:
+        def _error(_x):
+            raise exception
+
+        tree_map(_error, self.state)
+        return self.out
+
+
+@dataclass_frozen_pytree
+class RolloutBufferSamples:
     observations: th.Tensor
     actions: th.Tensor
     old_values: th.Tensor
@@ -38,7 +58,8 @@ class RolloutBufferSamples(NamedTuple):
     extractor_states: PyTree[th.Tensor]
 
 
-class DictRolloutBufferSamples(NamedTuple):
+@dataclass_frozen_pytree
+class DictRolloutBufferSamples:
     observations: TensorDict
     actions: th.Tensor
     old_values: th.Tensor
@@ -48,7 +69,8 @@ class DictRolloutBufferSamples(NamedTuple):
     extractor_states: PyTree[th.Tensor]
 
 
-class ReplayBufferSamples(NamedTuple):
+@dataclass_frozen_pytree
+class ReplayBufferSamples:
     observations: th.Tensor
     actions: th.Tensor
     next_observations: th.Tensor
@@ -57,7 +79,8 @@ class ReplayBufferSamples(NamedTuple):
     extractor_states: PyTree[th.Tensor]
 
 
-class DictReplayBufferSamples(NamedTuple):
+@dataclass_frozen_pytree
+class DictReplayBufferSamples:
     observations: TensorDict
     actions: th.Tensor
     next_observations: TensorDict
@@ -66,7 +89,8 @@ class DictReplayBufferSamples(NamedTuple):
     extractor_states: PyTree[th.Tensor]
 
 
-class RolloutReturn(NamedTuple):
+@dataclass_frozen_pytree
+class RolloutReturn:
     episode_timesteps: int
     n_episodes: int
     continue_training: bool
@@ -86,10 +110,10 @@ class PolicyPredictor(Protocol):
     def predict(
         self,
         observation: Union[th.Tensor, Dict[str, th.Tensor]],
-        state: Optional[Tuple[th.Tensor, ...]] = None,
+        state: PyTree[th.Tensor],
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
+    ) -> OutAndState[th.Tensor]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).

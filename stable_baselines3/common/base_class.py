@@ -202,6 +202,9 @@ class BaseAlgorithm(ABC):
                     np.isfinite(np.array([self.action_space.low, self.action_space.high]))
                 ), "Continuous action space must have a finite lower and upper bound"
 
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree[th.Tensor]:
+        return self.policy.initial_state(n_envs)
+
     @staticmethod
     def _wrap_env(env: GymEnv, verbose: int = 0, monitor_wrapper: bool = True) -> VecEnv:
         """ "

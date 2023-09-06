@@ -3,6 +3,7 @@ import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+import optree as ot
 import torch as th
 from gymnasium import spaces
 
@@ -52,6 +53,7 @@ class HerReplayBuffer(DictReplayBuffer):
         action_space: spaces.Space,
         env: VecEnv,
         device: Union[th.device, str] = "auto",
+        buffer_device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
@@ -64,12 +66,16 @@ class HerReplayBuffer(DictReplayBuffer):
             observation_space,
             action_space,
             device=device,
+            buffer_device=buffer_device,
             n_envs=n_envs,
             optimize_memory_usage=optimize_memory_usage,
             handle_timeout_termination=handle_timeout_termination,
         )
         self.env = env
         self.copy_info_dict = copy_info_dict
+
+        for elem in ot.tree_flatten(self.extractor_state_example):
+            raise NotImplementedError("Non-empty state not implemented for HerReplayBuffer")
 
         # convert goal_selection_strategy into GoalSelectionStrategy if string
         if isinstance(goal_selection_strategy, str):
@@ -157,7 +163,7 @@ class HerReplayBuffer(DictReplayBuffer):
         if self.copy_info_dict:
             self.infos[self.pos] = infos
         # Store the transition
-        super().add(obs, next_obs, action, reward, done, infos)
+        super().add(obs, next_obs, action, reward, done, infos, extractor_states=())
 
         # When episode ends, compute and store the episode length
         for env_idx in range(self.n_envs):

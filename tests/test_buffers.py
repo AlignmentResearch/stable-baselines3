@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces
@@ -83,7 +84,7 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     env = make_vec_env(env)
     env = VecNormalize(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device="cpu")
+    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, extractor_state_example=(), device="cpu")
 
     # Interract and store transitions
     env.reset()
@@ -93,7 +94,7 @@ def test_replay_buffer_normalization(replay_buffer_cls):
         _, _, done, info = env.step(action)
         next_obs = env.get_original_obs()
         reward = env.get_original_reward()
-        buffer.add(obs, next_obs, action, reward, done, info)
+        buffer.add(obs, next_obs, action, reward, done, info, extractor_states=())
         obs = next_obs
 
     sample = buffer.sample(50, env)
@@ -122,18 +123,23 @@ def test_device_buffer(replay_buffer_cls, device):
     }[replay_buffer_cls]
     env = make_vec_env(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
+    extractor_state_example = {"a": {"b": th.rand((4))}}
+    buffer = replay_buffer_cls(
+        100, env.observation_space, env.action_space, extractor_state_example=extractor_state_example, device=device
+    )
 
     # Interract and store transitions
     obs = env.reset()
     for _ in range(100):
         action = th.as_tensor(env.action_space.sample())
+        extractor_states = {"a": {"b": th.rand((env.num_envs, 4))}}
+
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
-            buffer.add(obs, action, reward, episode_start, values, log_prob)
+            buffer.add(obs, action, reward, episode_start, values, log_prob, extractor_states=extractor_states)
         else:
-            buffer.add(obs, next_obs, action, reward, done, info)
+            buffer.add(obs, next_obs, action, reward, done, info, extractor_states=extractor_states)
         obs = next_obs
 
     # Get data from the buffer
@@ -145,8 +151,8 @@ def test_device_buffer(replay_buffer_cls, device):
     # Check that all data are on the desired device
     desired_device = get_device(device).type
     for value in list(data):
-        if isinstance(value, dict):
-            for key in value.keys():
-                assert value[key].device.type == desired_device
-        elif isinstance(value, th.Tensor):
+
+        def _assert_device(value):
             assert value.device.type == desired_device
+
+        ot.tree_map(_assert_device, value)

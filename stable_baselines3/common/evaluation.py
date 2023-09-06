@@ -89,17 +89,18 @@ def evaluate_policy(
 
     current_rewards = torch.zeros(n_envs, dtype=torch.float32, device=device)
     current_lengths = torch.zeros(n_envs, dtype=torch.int64, device=device)
-    states = None
+    states = model.initial_state(n_envs)
     episode_starts = torch.ones((env.num_envs,), dtype=torch.bool, device=device)
-    initial_states = model.initial_state(n_envs)
+    initial_state = model.initial_state(n_envs)
     while (episode_counts < episode_count_targets).any():
-        actions, states = model.predict(
+        actions = model.predict(
             observations,  # type: ignore[arg-type]
             state=states,
             episode_start=episode_starts,
             deterministic=deterministic,
         )
-        new_observations, rewards, dones, infos = env.step(actions)
+        states = actions.state
+        new_observations, rewards, dones, infos = env.step(actions.out)
         current_rewards += rewards
         current_lengths += 1
         for i in range(n_envs):

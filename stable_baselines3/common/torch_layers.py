@@ -7,32 +7,14 @@ from torch import nn
 from optree import PyTree, tree_map
 
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
-from stable_baselines3.common.type_aliases import TensorDict
+from stable_baselines3.common.type_aliases import TensorDict, OutAndState, EMPTY_PYTREE
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 
 
 T = TypeVar("T")
 
-EMPTY_PYTREE: PyTree[th.Tensor] = ()  # type: ignore[assignment]
-
-@dataclass_frozen_pytree
-class OutAndState(Generic[T]):
-    out: T
-    state: PyTree[th.Tensor]
-
-    def apply(self, func: Callable[[T], T]) -> "OutAndState[T]":
-        return OutAndState(func(self.out), self.state)
-
-    def discard_state(self, exception: Exception) -> T:
-        def _error(_x):
-            raise exception
-        tree_map(_error, self.state)
-        return self.out
-
-
 ExtractorOutput = OutAndState[th.Tensor]
-
 
 class BaseFeaturesExtractor(nn.Module):
     """
@@ -58,8 +40,10 @@ class BaseFeaturesExtractor(nn.Module):
     def _initial_state(self) -> PyTree[th.Tensor]:
         return EMPTY_PYTREE
 
-    def initial_state(self, n_envs: Optional[int]) -> PyTree:
-        return tree_map(lambda x: x.unsqueeze(0).repeat((n_envs,) + (1,)*x.ndim), self._initial_state())
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        if n_envs is None:
+            return self._initial_state()
+        return tree_map(lambda x: x.unsqueeze(0).repeat((n_envs,) + (1,) * x.ndim), self._initial_state())
 
 
 class FlattenExtractor(BaseFeaturesExtractor):
@@ -278,6 +262,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
     """
 
     extractors: Mapping[str, BaseFeaturesExtractor] = {}
+
     def __init__(
         self,
         observation_space: spaces.Dict,
