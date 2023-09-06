@@ -287,8 +287,6 @@ class BasePolicy(BaseModel, ABC):
         or not using a ``tanh()`` function.
     """
 
-    features_extractor: BaseFeaturesExtractor
-
     def __init__(self, *args, squash_output: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._squash_output = squash_output
@@ -315,7 +313,7 @@ class BasePolicy(BaseModel, ABC):
                 module.bias.data.fill_(0.0)
 
     @abstractmethod
-    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState:
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState:
         """
         Get the action according to the policy for a given observation.
 
@@ -362,7 +360,7 @@ class BasePolicy(BaseModel, ABC):
                 raise ValueError("The state must be passed in when using recurrent policies.")
 
         with th.no_grad():
-            a_and_state = self._predict(observation, state, deterministic=deterministic)
+            a_and_state = self._predict(observation, extractor_state=state, deterministic=deterministic)
         actions = a_and_state.out
         # reshape to the original action shape
         actions = actions.reshape((-1, *self.action_space.shape))
@@ -644,8 +642,7 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         extractor_outs = self.extract_features(obs, extractor_state=extractor_state)
-        if not isinstance(extractor_outs, tuple):
-            assert self.share_features_extractor
+        if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(extractor_outs.out)
         else:
             pi_features, vf_features = extractor_outs.out
@@ -726,8 +723,7 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         extractor_out = self.extract_features(obs, extractor_states)
-        if not isinstance(extractor_out, tuple):
-            assert self.share_features_extractor
+        if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(extractor_out.out)
         else:
             pi_out, vf_out = extractor_out
@@ -964,6 +960,9 @@ class ContinuousCritic(BaseModel):
             q_net = nn.Sequential(*q_net)
             self.add_module(f"qf{idx}", q_net)
             self.q_networks.append(q_net)
+
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        return self.features_extractor.initial_state(n_envs)
 
     def forward(self, obs: TorchGymObs, actions: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
         # Learn the features extractor using the policy loss only

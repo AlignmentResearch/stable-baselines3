@@ -1,13 +1,14 @@
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import optree as ot
+from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import explained_variance
 
 SelfA2C = TypeVar("SelfA2C", bound="A2C")
@@ -123,11 +124,6 @@ class A2C(OnPolicyAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
-
-        def _not_impl(_):
-            raise NotImplementedError("Stateful policies not implemented for A2C")
-        ot.tree_map(_not_impl, self._last_extractor_states)
-
     def train(self) -> None:
         """
         Update policy using the currently gathered
@@ -139,6 +135,9 @@ class A2C(OnPolicyAlgorithm):
         # Update optimizer learning rate
         self._update_learning_rate(self.policy.optimizer)
 
+        if not tree_empty(self._last_extractor_states):
+            raise NotImplementedError("Stateful policies not implemented for A2C")
+
         # This will only loop once (get all data in one go)
         for rollout_data in self.rollout_buffer.get(batch_size=None):
             actions = rollout_data.actions
@@ -146,7 +145,7 @@ class A2C(OnPolicyAlgorithm):
                 # Convert discrete action from float to long
                 actions = actions.long().flatten()
 
-            vle = self.policy.evaluate_actions(rollout_data.observations, actions, self._last_extractor_states)
+            vle = self.policy.evaluate_actions(rollout_data.observations, actions, unwrap(self._last_extractor_states))
             values, log_prob, entropy = vle.out
             values = values.flatten()
 

@@ -8,6 +8,7 @@ import numpy as np
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 import torch as th
 from optree import PyTree
+import optree as ot
 
 from stable_baselines3.common import callbacks, vec_env
 
@@ -43,7 +44,7 @@ class OutAndState(Generic[T]):
         def _error(_x):
             raise exception
 
-        tree_map(_error, self.state)
+        ot.tree_map(_error, self.state, namespace="stable-baselines3")
         return self.out
 
 

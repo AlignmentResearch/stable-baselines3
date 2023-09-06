@@ -7,6 +7,8 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
+from optree import PyTree
+import optree as ot
 import torch as th
 from gymnasium import spaces
 
@@ -16,7 +18,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit, unwrap
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, OutAndState, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit, unwrap
 from stable_baselines3.common.utils import safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
@@ -347,9 +349,10 @@ class OffPolicyAlgorithm(BaseAlgorithm):
     def _sample_action(
         self,
         learning_starts: int,
+        extractor_state: PyTree[th.Tensor],
         action_noise: Optional[ActionNoise] = None,
         n_envs: int = 1,
-    ) -> Tuple[th.Tensor, th.Tensor]:
+    ) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
         """
         Sample an action according to the exploration policy.
         This is either done by sampling the probability distribution of the policy,
@@ -365,6 +368,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             and scaled action that will be stored in the replay buffer.
             The two differs when the action space is not normalized (bounds are not [-1, 1]).
         """
+        assert extractor_state is not False
         # Select action randomly or according to policy
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
@@ -373,7 +377,10 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
-            unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
+            pred = self.predict(self._last_obs, extractor_state, deterministic=False)
+            unscaled_action = pred.out
+            extractor_state = pred.state
+        assert extractor_state is not False
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, spaces.Box):
@@ -390,7 +397,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Discrete case, no need to normalize or clip
             buffer_action = unscaled_action
             action = buffer_action
-        return action, buffer_action
+        return OutAndState((action, buffer_action), extractor_state)
 
     def _dump_logs(self) -> None:
         """
@@ -429,6 +436,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         reward: th.Tensor,
         dones: th.Tensor,
         infos: List[Dict[str, Any]],
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         """
         Store transition in the replay buffer.
@@ -471,13 +479,13 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                     next_obs[i] = next_obs_
 
         replay_buffer.add(
-            self._last_original_obs,
-            next_obs,
-            buffer_action,
-            reward_,
-            dones,
-            infos,
-            unwrap(self._last_extractor_states),
+            obs=self._last_original_obs,
+            next_obs=next_obs,
+            action=buffer_action,
+            reward=reward_,
+            done=dones,
+            infos=infos,
+            extractor_states=extractor_states,
         )
 
         self._last_obs = new_obs
@@ -540,7 +548,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
-            actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
+            a_and_policy_state = self._sample_action(learning_starts, self._last_extractor_states, action_noise=action_noise, n_envs=env.num_envs)
+            actions, buffer_actions = a_and_policy_state.out
+            self._last_extractor_states = a_and_policy_state.state
 
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
@@ -558,7 +568,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self._update_info_buffer(infos, dones)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
-            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos)
+            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos, extractor_states=self._last_extractor_states)
 
             self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 

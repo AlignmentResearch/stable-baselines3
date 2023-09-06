@@ -2,6 +2,7 @@ import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
+from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -184,11 +185,17 @@ class DQN(OffPolicyAlgorithm):
         self.exploration_rate = self.exploration_schedule(self._current_progress_remaining)
         self.logger.record("rollout/exploration_rate", self.exploration_rate)
 
+    _state_err = NotImplementedError("Stateful policies not implemented for DQN")
+
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update learning rate according to schedule
         self._update_learning_rate(self.policy.optimizer)
+
+        extractor_states = self._last_extractor_states
+        if not tree_empty(extractor_states):
+            raise self._state_err
 
         losses = []
         for _ in range(gradient_steps):
@@ -197,7 +204,7 @@ class DQN(OffPolicyAlgorithm):
 
             with th.no_grad():
                 # Compute the next Q-values using the target network
-                next_q_values = self.q_net_target(replay_data.next_observations)
+                next_q_values = self.q_net_target(replay_data.next_observations, extractor_states).discard_state(self._state_err)
                 # Follow greedy policy: use the one with the highest value
                 next_q_values, _ = next_q_values.max(dim=1)
                 # Avoid potential broadcast issue
@@ -206,7 +213,7 @@ class DQN(OffPolicyAlgorithm):
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
             # Get current Q-values estimates
-            current_q_values = self.q_net(replay_data.observations)
+            current_q_values = self.q_net(replay_data.observations, extractor_states).discard_state(self._state_err)
 
             # Retrieve the q-values for the actions from the replay buffer
             current_q_values = th.gather(current_q_values, dim=1, index=replay_data.actions.long())
@@ -231,7 +238,7 @@ class DQN(OffPolicyAlgorithm):
     def predict(
         self,
         observation: Union[th.Tensor, Dict[str, th.Tensor]],
-        extractor_state: Optional[PyTree[th.Tensor]] = None,
+        state: Optional[PyTree[th.Tensor]] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
     ) -> OutAndState[th.Tensor]:
@@ -248,7 +255,7 @@ class DQN(OffPolicyAlgorithm):
         obs_ = obs_as_tensor(observation, device=self.device)
         assert not isinstance(obs_, tuple)
         observation = obs_
-        preds = self.policy.predict(observation, extractor_state, episode_start, deterministic)
+        preds = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
 
         if not deterministic and th.rand(()) < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):

@@ -5,7 +5,7 @@ from gymnasium import spaces
 from torch import nn
 from optree import PyTree
 
-from stable_baselines3.common.policies import BasePolicy, ContinuousCritic, OutAndState
+from stable_baselines3.common.policies import BasePolicy, ContinuousCritic, OutAndState, PolicyValueExtractorState
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -234,13 +234,18 @@ class TD3Policy(BasePolicy):
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
         return ContinuousCritic(**critic_kwargs).to(self.device)
 
-    def forward(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        return self._predict(observation, state, deterministic=deterministic)
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        return PolicyValueExtractorState(
+            pi_state=self.actor.initial_state(n_envs=n_envs), vf_state=self.critic.initial_state(n_envs=n_envs)
+        )  # type: ignore[return-type]
 
-    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+    def forward(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self._predict(observation, extractor_state, deterministic=deterministic)
+
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
-        return self.actor(observation)
+        return self.actor(observation, extractor_state)
 
     def set_training_mode(self, mode: bool) -> None:
         """

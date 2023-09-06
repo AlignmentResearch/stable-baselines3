@@ -6,8 +6,9 @@ import numpy as np
 import optree as ot
 import torch as th
 from gymnasium import spaces
+from optree import PyTree
 
-from stable_baselines3.common.buffers import DictReplayBuffer
+from stable_baselines3.common.buffers import DictReplayBuffer, index_into_pytree
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples, TensorDict
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
@@ -51,6 +52,7 @@ class HerReplayBuffer(DictReplayBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
+        extractor_state_example: PyTree[th.Tensor],
         env: VecEnv,
         device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "cpu",
@@ -65,6 +67,7 @@ class HerReplayBuffer(DictReplayBuffer):
             buffer_size,
             observation_space,
             action_space,
+            extractor_state_example=extractor_state_example,
             device=device,
             buffer_device=buffer_device,
             n_envs=n_envs,
@@ -73,9 +76,6 @@ class HerReplayBuffer(DictReplayBuffer):
         )
         self.env = env
         self.copy_info_dict = copy_info_dict
-
-        for elem in ot.tree_flatten(self.extractor_state_example):
-            raise NotImplementedError("Non-empty state not implemented for HerReplayBuffer")
 
         # convert goal_selection_strategy into GoalSelectionStrategy if string
         if isinstance(goal_selection_strategy, str):
@@ -98,9 +98,9 @@ class HerReplayBuffer(DictReplayBuffer):
         # when an episode starts and ends.
         # We use the following arrays to store the indices,
         # and update them when an episode ends.
-        self.ep_start = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
-        self.ep_length = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
-        self._current_ep_start = np.zeros(self.n_envs, dtype=np.int64)
+        self.ep_start = th.zeros((self.buffer_size, self.n_envs), dtype=th.int64, device=self.buffer_device)
+        self.ep_length = th.zeros((self.buffer_size, self.n_envs), dtype=th.int64, device=self.buffer_device)
+        self._current_ep_start = th.zeros(self.n_envs, dtype=th.int64, device=self.buffer_device)
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -140,10 +140,11 @@ class HerReplayBuffer(DictReplayBuffer):
         self,
         obs: TensorDict,
         next_obs: TensorDict,
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        action: th.Tensor,
+        reward: th.Tensor,
+        done: th.Tensor,
         infos: List[Dict[str, Any]],
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         # When the buffer is full, we rewrite on old episodes. When we start to
         # rewrite on an old episodes, we want the whole old episode to be deleted
@@ -154,16 +155,16 @@ class HerReplayBuffer(DictReplayBuffer):
             episode_length = self.ep_length[self.pos, env_idx]
             if episode_length > 0:
                 episode_end = episode_start + episode_length
-                episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
+                episode_indices = th.arange(self.pos, episode_end) % self.buffer_size
                 self.ep_length[episode_indices, env_idx] = 0
 
         # Update episode start
-        self.ep_start[self.pos] = self._current_ep_start.copy()
+        self.ep_start[self.pos].copy_(self._current_ep_start, non_blocking=True)
 
         if self.copy_info_dict:
             self.infos[self.pos] = infos
         # Store the transition
-        super().add(obs, next_obs, action, reward, done, infos, extractor_states=())
+        super().add(obs, next_obs, action, reward, done, infos, extractor_states=extractor_states)
 
         # When episode ends, compute and store the episode length
         for env_idx in range(self.n_envs):
@@ -182,7 +183,7 @@ class HerReplayBuffer(DictReplayBuffer):
             # Occurs when the buffer becomes full, the storage resumes at the
             # beginning of the buffer. This can happen in the middle of an episode.
             episode_end += self.buffer_size
-        episode_indices = np.arange(episode_start, episode_end) % self.buffer_size
+        episode_indices = th.arange(episode_start, episode_end) % self.buffer_size
         self.ep_length[episode_indices, env_idx] = episode_end - episode_start
         # Update the current episode start
         self._current_ep_start[env_idx] = self.pos
@@ -198,7 +199,7 @@ class HerReplayBuffer(DictReplayBuffer):
         # When the buffer is full, we rewrite on old episodes. We don't want to
         # sample incomplete episode transitions, so we have to eliminate some indexes.
         is_valid = self.ep_length > 0
-        if not np.any(is_valid):
+        if not th.any(is_valid):
             raise RuntimeError(
                 "Unable to sample before the end of the first episode. We recommend choosing a value "
                 "for learning_starts that is greater than the maximum number of timesteps in the environment."
@@ -211,9 +212,10 @@ class HerReplayBuffer(DictReplayBuffer):
         # they correspond to is_valid[0, 0], is_valid[1, 0] and is_valid[1, 2]
         # or in numpy format ([rows], [columns]): (array([0, 1, 1]), array([0, 0, 2]))
         # Those indices are obtained back using np.unravel_index(valid_indices, is_valid.shape)
-        valid_indices = np.flatnonzero(is_valid)
+        valid_indices = np.flatnonzero(is_valid.numpy())
         # Sample valid transitions that will constitute the minibatch of size batch_size
-        sampled_indices = np.random.choice(valid_indices, size=batch_size, replace=True)
+        index_randomness = th.randint(0, valid_indices.shape[0], (batch_size,))  # Sample with replacement
+        sampled_indices = valid_indices[index_randomness.numpy()]
         # Unravel the indexes, i.e. recover the batch and env indices.
         # Example: if sampled_indices = [0, 3, 5], then batch_indices = [0, 1, 1] and env_indices = [0, 0, 2]
         batch_indices, env_indices = np.unravel_index(sampled_indices, is_valid.shape)
@@ -224,72 +226,17 @@ class HerReplayBuffer(DictReplayBuffer):
         virtual_env_indices, real_env_indices = np.split(env_indices, [nb_virtual])
 
         # Get real and virtual data
-        real_data = self._get_real_samples(real_batch_indices, real_env_indices, env)
+        real_data = self._get_samples(th.from_numpy(real_batch_indices), th.from_numpy(real_env_indices), env)
         # Create virtual transitions by sampling new desired goals and computing new rewards
-        virtual_data = self._get_virtual_samples(virtual_batch_indices, virtual_env_indices, env)
+        virtual_data = self._get_virtual_samples(th.from_numpy(virtual_batch_indices), th.from_numpy(virtual_env_indices), env)
 
         # Concatenate real and virtual data
-        observations = {
-            key: th.cat((real_data.observations[key], virtual_data.observations[key]))
-            for key in virtual_data.observations.keys()
-        }
-        actions = th.cat((real_data.actions, virtual_data.actions))
-        next_observations = {
-            key: th.cat((real_data.next_observations[key], virtual_data.next_observations[key]))
-            for key in virtual_data.next_observations.keys()
-        }
-        dones = th.cat((real_data.dones, virtual_data.dones))
-        rewards = th.cat((real_data.rewards, virtual_data.rewards))
-
-        return DictReplayBufferSamples(
-            observations=observations,
-            actions=actions,
-            next_observations=next_observations,
-            dones=dones,
-            rewards=rewards,
-        )
-
-    def _get_real_samples(
-        self,
-        batch_indices: np.ndarray,
-        env_indices: np.ndarray,
-        env: Optional[VecNormalize] = None,
-    ) -> DictReplayBufferSamples:
-        """
-        Get the samples corresponding to the batch and environment indices.
-
-        :param batch_indices: Indices of the transitions
-        :param env_indices: Indices of the envrionments
-        :param env: associated gym VecEnv to normalize the
-            observations/rewards when sampling, defaults to None
-        :return: Samples
-        """
-        # Normalize if needed and remove extra dimension (we are using only one env for now)
-        obs_ = self._normalize_obs({key: obs[batch_indices, env_indices, :] for key, obs in self.observations.items()}, env)
-        next_obs_ = self._normalize_obs(
-            {key: obs[batch_indices, env_indices, :] for key, obs in self.next_observations.items()}, env
-        )
-
-        # Convert to torch tensor
-        observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
-        next_observations = {key: self.to_torch(obs) for key, obs in next_obs_.items()}
-
-        return DictReplayBufferSamples(
-            observations=observations,
-            actions=self.to_torch(self.actions[batch_indices, env_indices]),
-            next_observations=next_observations,
-            # Only use dones that are not due to timeouts
-            # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(
-                self.dones[batch_indices, env_indices] * (1 - self.timeouts[batch_indices, env_indices])
-            ).reshape(-1, 1),
-            rewards=self._normalize_reward(self.to_torch(self.rewards[batch_indices, env_indices].reshape(-1, 1), env)),
-        )
+        return ot.tree_map(lambda x, y: th.cat((x, y)), real_data, virtual_data, namespace="stable-baselines3")
 
     def _get_virtual_samples(
         self,
-        batch_indices: np.ndarray,
-        env_indices: np.ndarray,
+        batch_indices: th.Tensor,
+        env_indices: th.Tensor,
         env: Optional[VecNormalize] = None,
     ) -> DictReplayBufferSamples:
         """
@@ -302,8 +249,9 @@ class HerReplayBuffer(DictReplayBuffer):
         :return: Samples, with new desired goals and new rewards
         """
         # Get infos and obs
-        obs = {key: obs[batch_indices, env_indices, :] for key, obs in self.observations.items()}
-        next_obs = {key: obs[batch_indices, env_indices, :] for key, obs in self.next_observations.items()}
+        idx = np.s_[batch_indices, env_indices]
+        obs = index_into_pytree(idx, self.observations)
+        next_obs = index_into_pytree(idx, self.next_observations)
         if self.copy_info_dict:
             # The copy may cause a slow down
             infos = copy.deepcopy(self.infos[batch_indices, env_indices])
@@ -331,27 +279,32 @@ class HerReplayBuffer(DictReplayBuffer):
             # we use the method of the first environment assuming that all environments are identical.
             indices=[0],
         )
-        rewards = rewards[0].astype(np.float32)  # env_method returns a list containing one element
-        obs = self._normalize_obs(obs, env)
-        next_obs = self._normalize_obs(next_obs, env)
+        # env_method returns a list containing one element
+        rewards = th.as_tensor(rewards[0], dtype=th.float32, device=self.device)
 
-        # Convert to torch tensor
-        observations = {key: self.to_torch(obs) for key, obs in obs.items()}
-        next_observations = {key: self.to_torch(obs) for key, obs in next_obs.items()}
-
-        return DictReplayBufferSamples(
-            observations=observations,
-            actions=self.to_torch(self.actions[batch_indices, env_indices]),
-            next_observations=next_observations,
-            # Only use dones that are not due to timeouts
-            # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(
-                self.dones[batch_indices, env_indices] * (1 - self.timeouts[batch_indices, env_indices])
-            ).reshape(-1, 1),
-            rewards=self._normalize_reward(self.to_torch(rewards.reshape(-1, 1), env)),
+        return self.postprocess_samples(
+            DictReplayBufferSamples(
+                observations=self._normalize_obs(obs, env),
+                actions=self.actions[idx],
+                next_observations=self._normalize_obs(next_obs, env),
+                # Only use dones that are not due to timeouts
+                # deactivated by default (timeouts is initialized as an array of False)
+                dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
+                rewards=self._normalize_reward(rewards.view(-1, 1), env),
+                extractor_states=index_into_pytree(idx, self.extractor_states),
+            )
         )
 
-    def _sample_goals(self, batch_indices: np.ndarray, env_indices: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _tensor_randint(low: th.Tensor, high: th.Tensor) -> th.Tensor:
+        """
+        Returns almost-uniform random integers in [low, high). Limits can be a tensor, unlike th.randint.
+        """
+        MAX_INT = th.iinfo(th.int64).max
+        diff = high - low
+        return th.randint(0, MAX_INT, size=diff.size(), device=diff.device).remainder_(diff).add_(low)
+
+    def _sample_goals(self, batch_indices: th.Tensor, env_indices: th.Tensor) -> th.Tensor:
         """
         Sample goals based on goal_selection_strategy.
 
@@ -370,12 +323,11 @@ class HerReplayBuffer(DictReplayBuffer):
             # Replay with random state which comes from the same episode and was observed after current transition
             # Note: our implementation is inclusive: current transition can be sampled
             current_indices_in_episode = (batch_indices - batch_ep_start) % self.buffer_size
-            transition_indices_in_episode = np.random.randint(current_indices_in_episode, batch_ep_length)
+            transition_indices_in_episode = self._tensor_randint(current_indices_in_episode, batch_ep_length)
 
         elif self.goal_selection_strategy == GoalSelectionStrategy.EPISODE:
             # Replay with random state which comes from the same episode as current transition
-            transition_indices_in_episode = np.random.randint(0, batch_ep_length)
-
+            transition_indices_in_episode = self._tensor_randint(0, batch_ep_length)
         else:
             raise ValueError(f"Strategy {self.goal_selection_strategy} for sampling goals not supported!")
 

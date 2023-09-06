@@ -3,6 +3,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import optree as ot
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 
@@ -162,7 +163,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_start()
 
         # Recurrent state from the feature extractor, that will be updated
-        extractor_states = ot.tree_map(lambda x: x.clone(), unwrap(self._last_extractor_states))
+        extractor_states = ot.tree_map(lambda x: x.clone(), unwrap(self._last_extractor_states), namespace=OT_NAMESPACE)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:

@@ -6,7 +6,7 @@ from optree import PyTree
 from torch import nn
 
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution
-from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
+from stable_baselines3.common.policies import BasePolicy, ContinuousCritic, PolicyValueExtractorState
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -146,7 +146,9 @@ class Actor(BasePolicy):
         assert isinstance(self.action_dist, StateDependentNoiseDistribution), msg
         self.action_dist.sample_weights(self.log_std, batch_size=batch_size)
 
-    def get_action_dist_params(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]]:
+    def get_action_dist_params(
+        self, obs: th.Tensor, extractor_state: PyTree
+    ) -> OutAndState[Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]]:
         """
         Get the parameters for the action distribution.
 
@@ -167,6 +169,7 @@ class Actor(BasePolicy):
         return OutAndState((mean_actions, log_std, {}), features.state)
 
     def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        assert extractor_state is not False
         action_dist_params = self.get_action_dist_params(obs, extractor_state)
         mean_actions, log_std, kwargs = action_dist_params.out
         # Note: the action is squashed
@@ -336,6 +339,14 @@ class SACPolicy(BasePolicy):
         )
         return data
 
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        if self.share_features_extractor:
+            return self.actor.initial_state(n_envs)
+        else:
+            return PolicyValueExtractorState(  # type: ignore[return-value]
+                pi_state=self.actor.initial_state(n_envs), vf_state=self.critic.initial_state(n_envs)
+            )
+
     def reset_noise(self, batch_size: int = 1) -> None:
         """
         Sample new weights for the exploration matrix, when using gSDE.
@@ -355,8 +366,8 @@ class SACPolicy(BasePolicy):
     def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         return self._predict(obs, extractor_state, deterministic=deterministic)
 
-    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        return self.actor(observation, deterministic)
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self.actor(observation, extractor_state, deterministic=deterministic)
 
     def set_training_mode(self, mode: bool) -> None:
         """

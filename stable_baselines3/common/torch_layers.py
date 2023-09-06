@@ -261,7 +261,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
         Otherwise, it checks that it has expected dtype (uint8) and bounds (values in [0, 255]).
     """
 
-    extractors: Mapping[str, BaseFeaturesExtractor] = {}
+    extractors: Mapping[str, BaseFeaturesExtractor]
 
     def __init__(
         self,
@@ -280,7 +280,7 @@ class CombinedExtractor(BaseFeaturesExtractor):
                 total_concat_size += cnn_output_dim
             else:
                 # The observation key is a vector, flatten it if needed
-                extractors[key] = nn.Flatten()
+                extractors[key] = FlattenExtractor(subspace)
                 total_concat_size += get_flattened_obs_dim(subspace)
 
         self.extractors = nn.ModuleDict(extractors)  # type: ignore[assignment]

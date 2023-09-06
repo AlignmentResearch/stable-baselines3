@@ -1,6 +1,5 @@
 import warnings
 from abc import ABC, abstractmethod
-import dataclasses
 from typing import Any, Dict, Generator, List, Optional, TypeVar, Union
 
 import numpy as np
@@ -10,6 +9,7 @@ from gymnasium import spaces
 from optree import PyTree
 
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS, tree_empty
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     DictRolloutBufferSamples,
@@ -30,8 +30,6 @@ except ImportError:
 
 TPyTree = TypeVar("TPyTree", bound=PyTree[th.Tensor])
 
-
-NS = "stable-baselines3"
 
 
 def index_into_pytree(idx: TensorIndex, tree: PyTree[th.Tensor], namespace: str = NS) -> PyTree[th.Tensor]:
@@ -69,8 +67,7 @@ class BaseBuffer(ABC):
         self.extractor_state_example = ot.tree_map(
             lambda x: th.zeros((), dtype=x.dtype).expand_as(x), extractor_state_example, namespace=NS
         )
-        flattened_state, _ = ot.tree_flatten(self.extractor_state_example)
-        self.policy_is_recurrent = bool(len(flattened_state))
+        self.policy_is_recurrent = ~tree_empty(self.extractor_state_example)
 
         self.action_dim = get_action_dim(action_space)
         self.pos = 0
@@ -154,13 +151,9 @@ class BaseBuffer(ABC):
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def postprocess_samples(self, samples: TPyTree) -> TPyTree:
-        return ot.tree_map(
-            lambda arr, to_flatten: self.to_device(self.swap_and_flatten(arr, to_flatten)),
-            samples,
-            ot.tree_broadcast_prefix(self.TO_FLATTEN, samples, namespace=NS),
-            namespace=NS,
-        )
+        raise NotImplementedError()
 
     def to_device(self, array: th.Tensor, copy: bool = True) -> th.Tensor:
         """
@@ -386,31 +379,25 @@ class ReplayBuffer(BaseBuffer):
             batch_inds = th.randint(0, self.pos, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
-    TO_FLATTEN = ReplayBufferSamples(
-        observations=False, actions=False, next_observations=False, dones=True, rewards=True, extractor_states=False
-    )
+    def postprocess_samples(self, samples: TPyTree) -> TPyTree:
+        return ot.tree_map(self.to_device, samples, namespace=NS)
 
     def _get_samples(self, batch_inds: Union[slice, th.Tensor], env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
             batch_inds = th.arange(batch_inds.start, batch_inds.stop, batch_inds.step, device=self.buffer_device)
         env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
-
-        assert isinstance(self.observations, th.Tensor)
-        if self.optimize_memory_usage:
-            next_obs = self._normalize_obs(self.observations[(batch_inds + 1) % self.buffer_size, env_indices, :], env)
-        else:
-            assert isinstance(self.next_observations, th.Tensor)
-            next_obs = self._normalize_obs(self.next_observations[batch_inds, env_indices, :], env)
+        if self.policy_is_recurrent:
+            raise NotImplementedError("Replay buffer doesn't know how to return time-contiguous samples (see above lines).")
 
         idx = np.s_[batch_inds, env_indices, ...]
         out = ReplayBufferSamples(
-            observations=self._normalize_obs(index_into_pytree(idx, self.observations)),
+            observations=self._normalize_obs(index_into_pytree(idx, self.observations), env),
             actions=self.actions[idx],
-            next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations)),
+            next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations), env),
             dones=self.dones[idx] * (1 - self.timeouts[idx].view(-1, 1)),
-            rewards=self._normalize_reward(self.rewards[idx].view(-1, 1)),
-            extractor_states=self.extractor_states[idx],
+            rewards=self._normalize_reward(self.rewards[idx].view(-1, 1), env),
+            extractor_states=index_into_pytree(idx, self.extractor_states),
         )
         return self.postprocess_samples(out)
 
@@ -597,6 +584,14 @@ class RolloutBuffer(BaseBuffer):
             while start_idx < self.buffer_size * self.n_envs:
                 yield self._get_samples(indices[start_idx : start_idx + batch_size])
                 start_idx += batch_size
+
+    def postprocess_samples(self, samples: TPyTree) -> TPyTree:
+        return ot.tree_map(
+            lambda arr, to_flatten: self.to_device(self.swap_and_flatten(arr, to_flatten)),
+            samples,
+            ot.tree_broadcast_prefix(self.TO_FLATTEN, samples, namespace=NS),
+            namespace=NS,
+        )
 
     TO_FLATTEN = RolloutBufferSamples(
         observations=False,
@@ -797,19 +792,18 @@ class DictReplayBuffer(ReplayBuffer):
         """
         return super(ReplayBuffer, self).sample(batch_size=batch_size, env=env)
 
-    TO_FLATTEN = DictReplayBufferSamples(
-        observations=False, actions=False, next_observations=False, dones=True, rewards=True, extractor_states=False
-    )
 
     def _get_samples(  # type: ignore[override]
         self,
         batch_inds: Union[slice, th.Tensor],
+        env_inds: Optional[th.Tensor] = None,
         env: Optional[VecNormalize] = None,
     ) -> DictReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
             batch_inds = th.arange(batch_inds.start, batch_inds.stop, batch_inds.step, device=self.buffer_device)
-        env_indices = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
+        if env_inds is None:
+            env_inds = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 
         assert (
             isinstance(self.observations, dict)
@@ -818,14 +812,14 @@ class DictReplayBuffer(ReplayBuffer):
             and isinstance(self.next_observations, dict)
         )
 
-        idx = np.s_[batch_inds, env_indices, ...]
+        idx = np.s_[batch_inds, env_inds, ...]
         out = DictReplayBufferSamples(
-            observations=self._normalize_obs(index_into_pytree(idx, self.observations)),
+            observations=self._normalize_obs(index_into_pytree(idx, self.observations), env),
             actions=self.actions[idx],
-            next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations)),
-            dones=self.dones[idx] * (1 - self.timeouts[idx].view(-1, 1)),
-            rewards=self._normalize_reward(self.rewards[idx].view(-1, 1)),
-            extractor_states=self.extractor_states[idx],
+            next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations), env),
+            dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
+            rewards=self._normalize_reward(self.rewards[idx].view(-1, 1), env),
+            extractor_states=index_into_pytree(idx, self.extractor_states),
         )
         return self.postprocess_samples(out)
 

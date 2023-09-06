@@ -56,7 +56,7 @@ def test_cnn(tmp_path, model_class, share_features_extractor):
     for _ in range(10):
         model.predict(obs, deterministic=False)
 
-    action, _ = model.predict(obs, deterministic=True)
+    action = model.predict(obs, deterministic=True).out
 
     model.save(tmp_path / SAVE_NAME)
     del model
@@ -64,7 +64,7 @@ def test_cnn(tmp_path, model_class, share_features_extractor):
     model = model_class.load(tmp_path / SAVE_NAME)
 
     # Check that the prediction is the same
-    assert np.allclose(action, model.predict(obs, deterministic=True)[0])
+    assert np.allclose(action, model.predict(obs, deterministic=True).out[0])
 
     os.remove(str(tmp_path / SAVE_NAME))
 
@@ -93,7 +93,7 @@ def test_vec_transpose_skip(tmp_path, model_class):
     model = model_class("CnnPolicy", env, **kwargs).learn(250)
 
     obs = env.reset()
-    action, _ = model.predict(obs, deterministic=True)
+    action = model.predict(obs, deterministic=True).out
 
 
 def patch_dqn_names_(model):
@@ -254,7 +254,7 @@ def test_channel_first_env(tmp_path):
 
     obs = env.reset()
 
-    action, _ = model.predict(obs, deterministic=True)
+    action = model.predict(obs, deterministic=True).out
 
     model.save(tmp_path / SAVE_NAME)
     del model
@@ -262,7 +262,7 @@ def test_channel_first_env(tmp_path):
     model = A2C.load(tmp_path / SAVE_NAME)
 
     # Check that the prediction is the same
-    assert np.allclose(action, model.predict(obs, deterministic=True)[0])
+    assert np.allclose(action, model.predict(obs, deterministic=True).out[0])
 
     os.remove(str(tmp_path / SAVE_NAME))
 

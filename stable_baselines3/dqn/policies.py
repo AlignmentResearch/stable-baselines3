@@ -179,6 +179,9 @@ class DQNPolicy(BasePolicy):
         net_args = self._update_features_extractor(self.net_args, features_extractor=None)
         return QNetwork(**net_args).to(self.device)
 
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        return self.q_net.initial_state(n_envs)
+
     def forward(self, obs: th.Tensor, extractor_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
         return self._predict(obs, extractor_state, deterministic=deterministic)
 
