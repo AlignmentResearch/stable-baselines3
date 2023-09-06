@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import optree as ot
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -231,7 +232,7 @@ class HerReplayBuffer(DictReplayBuffer):
         virtual_data = self._get_virtual_samples(th.from_numpy(virtual_batch_indices), th.from_numpy(virtual_env_indices), env)
 
         # Concatenate real and virtual data
-        return ot.tree_map(lambda x, y: th.cat((x, y)), real_data, virtual_data, namespace="stable-baselines3")
+        return ot.tree_map(lambda x, y: th.cat((x, y)), real_data, virtual_data, namespace=OT_NAMESPACE)
 
     def _get_virtual_samples(
         self,

@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, T
 
 import gymnasium as gym
 import numpy as np
+from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -558,6 +559,10 @@ class BaseAlgorithm(ABC):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
+        if state is None:
+            state = self.initial_state()
+            if not tree_empty(state):
+                raise ValueError("Passed state=None, but the recurrent model has internal state.")
         return self.policy.predict(observation, state, episode_start, deterministic)  # type: ignore[arg-type]
 
     def set_random_seed(self, seed: Optional[int] = None) -> None:

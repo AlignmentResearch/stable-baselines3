@@ -407,6 +407,12 @@ class PolicyValueExtractorState:
     pi_state: PyTree[th.Tensor]
     vf_state: PyTree[th.Tensor]
 
+    def __init__(self, pi_state: PyTree[th.Tensor], vf_state: PyTree[th.Tensor]):
+        if isinstance(pi_state, PolicyValueExtractorState) and isinstance(vf_state, PolicyValueExtractorState):
+            import pdb; pdb.set_trace()
+        object.__setattr__(self, "pi_state", pi_state)
+        object.__setattr__(self, "vf_state", vf_state)
+
 
 class ActorCriticPolicy(BasePolicy):
     """
@@ -669,8 +675,8 @@ class ActorCriticPolicy(BasePolicy):
         if self.share_features_extractor:
             return super().extract_features(obs, extractor_state, self.features_extractor)
         else:
-            pi_out = super().extract_features(obs, extractor_state, self.pi_features_extractor)
-            vf_out = super().extract_features(obs, extractor_state, self.vf_features_extractor)
+            pi_out = super().extract_features(obs, extractor_state.pi_state, self.pi_features_extractor)
+            vf_out = super().extract_features(obs, extractor_state.vf_state, self.vf_features_extractor)
             return OutAndState((pi_out.out, vf_out.out), PolicyValueExtractorState(pi_out.state, vf_out.state))
 
     def _get_action_dist_from_latent(self, latent_pi: th.Tensor) -> Distribution:
@@ -726,9 +732,9 @@ class ActorCriticPolicy(BasePolicy):
         if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(extractor_out.out)
         else:
-            pi_out, vf_out = extractor_out
-            latent_pi = self.mlp_extractor.forward_actor(pi_out.out)
-            latent_vf = self.mlp_extractor.forward_critic(vf_out.out)
+            pi_out, vf_out = extractor_out.out
+            latent_pi = self.mlp_extractor.forward_actor(pi_out)
+            latent_vf = self.mlp_extractor.forward_critic(vf_out)
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf).squeeze(-1)
