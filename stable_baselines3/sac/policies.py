@@ -16,7 +16,7 @@ from stable_baselines3.common.torch_layers import (
     create_mlp,
     get_actor_critic_arch,
 )
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, unwrap
 from stable_baselines3.td3.policies import OutAndState
 
 # CAP the standard deviation of the actor
@@ -156,7 +156,7 @@ class Actor(BasePolicy):
         :return:
             Mean, standard deviation and optional keyword arguments.
         """
-        features = self.extract_features(obs, extractor_state, self.features_extractor)
+        features = self.extract_features(obs, extractor_state, unwrap(self.features_extractor))
         latent_pi = self.latent_pi(features.out)
         mean_actions = self.mu(latent_pi)
 
@@ -367,11 +367,12 @@ class SACPolicy(BasePolicy):
         return self._predict(obs, extractor_state, deterministic=deterministic)
 
     def _predict(
-        self, observation: th.Tensor, extractor_state: PolicyValueExtractorState, deterministic: bool = False
+        self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False
     ) -> OutAndState[th.Tensor]:
         if self.share_features_extractor:
             return self.actor(observation, extractor_state, deterministic=deterministic)
 
+        assert isinstance(extractor_state, PolicyValueExtractorState)
         out_and_actor_state = self.actor(observation, extractor_state.pi_state, deterministic=deterministic)
         return OutAndState(
             out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)

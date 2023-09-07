@@ -15,7 +15,7 @@ from stable_baselines3.common.torch_layers import (
     create_mlp,
     get_actor_critic_arch,
 )
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, unwrap
 
 
 class Actor(BasePolicy):
@@ -75,7 +75,7 @@ class Actor(BasePolicy):
 
     def forward(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
-        features = self.extract_features(obs, extractor_state, self.features_extractor)
+        features = self.extract_features(obs, extractor_state, unwrap(self.features_extractor))
         return OutAndState(self.mu(features.out), features.state)
 
     def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
@@ -248,6 +248,7 @@ class TD3Policy(BasePolicy):
         if self.share_features_extractor:
             return self.actor(observation, extractor_state)
 
+        assert isinstance(extractor_state, PolicyValueExtractorState)
         out_and_actor_state = self.actor(observation, extractor_state.pi_state)
         return OutAndState(
             out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)

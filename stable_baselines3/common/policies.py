@@ -403,7 +403,7 @@ class BasePolicy(BaseModel, ABC):
 
 
 @dataclass_frozen_pytree
-class PolicyValueExtractorState:
+class PolicyValueExtractorState(PyTree(th.Tensor)):
     pi_state: PyTree[th.Tensor]
     vf_state: PyTree[th.Tensor]
 

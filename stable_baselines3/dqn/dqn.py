@@ -12,7 +12,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.torch_layers import OutAndState
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
 from stable_baselines3.common.vec_env.util import obs_as_tensor
 from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
@@ -194,7 +194,7 @@ class DQN(OffPolicyAlgorithm):
         self._update_learning_rate(self.policy.optimizer)
 
         extractor_states = self._last_extractor_states
-        if not tree_empty(extractor_states):
+        if not tree_empty(unwrap(extractor_states)):
             raise self._state_err
 
         losses = []

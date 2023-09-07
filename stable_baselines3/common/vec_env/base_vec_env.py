@@ -20,7 +20,7 @@ VecEnvObs = Union[th.Tensor, Dict[str, th.Tensor], Tuple[th.Tensor, ...]]
 # it contains the observation, reward, done, info for each env
 VecEnvStepReturn = Tuple[VecEnvObs, th.Tensor, th.Tensor, List[Dict]]
 
-# EnvObs is like VecEnvObs but for a single, original gymnasiu
+# EnvObs is like VecEnvObs but for a single, original gymnasium env
 EnvObs = Union[np.ndarray, Dict[str, np.ndarray], Tuple[np.ndarray, ...]]
 
 

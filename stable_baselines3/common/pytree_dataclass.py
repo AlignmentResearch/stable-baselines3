@@ -41,4 +41,4 @@ def dataclass_frozen_pytree(Cls: Type, **kwargs) -> Type[ot.PyTree]:
 
 def tree_empty(tree: ot.PyTree) -> bool:
     flattened_state, _ = ot.tree_flatten(tree, namespace=OT_NAMESPACE)
-    return ~bool(len(flattened_state))
+    return not bool(len(flattened_state))

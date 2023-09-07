@@ -299,7 +299,6 @@ class CombinedExtractor(BaseFeaturesExtractor):
     def forward(self, observations: TensorDict, state: Dict[str, PyTree[th.Tensor]]) -> OutAndState[th.Tensor]:  # type: ignore
         encoded_tensor_list = []
         out_states = {}
-        # TODO(adria) does this work?
 
         def _is_leaf(x):
             return isinstance(x, dict) and set(x.keys()) == set(observations.keys())
@@ -311,7 +310,10 @@ class CombinedExtractor(BaseFeaturesExtractor):
 
         for key, extractor in self.extractors.items():
             # Convert state to a tuple so index_into_pytree works for top-level dicts
-            (indexed_state,) = index_into_pytree(key, (state,), is_leaf=is_leaf)
+            if _is_leaf(state):
+                indexed_state = state[key]
+            else:
+                indexed_state = index_into_pytree(key, cast(PyTree, state), is_leaf=is_leaf)
             out: OutAndState[th.Tensor] = extractor(observations[key], indexed_state)
             encoded_tensor_list.append(out.out)
             out_states[key] = out.state

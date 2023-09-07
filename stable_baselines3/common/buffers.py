@@ -1,6 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generator, List, Mapping, Optional, TypeVar, Union
 
 import numpy as np
 import optree as ot
@@ -30,14 +30,17 @@ except ImportError:
 
 TPyTree = TypeVar("TPyTree", bound=PyTree[th.Tensor])
 
+KT = TypeVar("KT")
+VT = TypeVar("VT")
+PyTreeGeneric = TypeVar("PyTreeGeneric", bound=PyTree)
 
 def index_into_pytree(
-    idx: TensorIndex,
-    tree: PyTree[th.Tensor],
-    is_leaf: Optional[Union[bool, Callable[[PyTree[th.Tensor]], bool]]] = None,
+    idx: KT,
+    tree: PyTreeGeneric[Mapping[KT, VT]],
+    is_leaf: Optional[Union[bool, Callable[[PyTreeGeneric[Mapping[KT, VT]]], bool]]] = None,
     none_is_leaf: bool = False,
     namespace: str = NS,
-) -> PyTree[th.Tensor]:
+) -> PyTreeGeneric[VT]:
     return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 

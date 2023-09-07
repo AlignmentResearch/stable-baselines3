@@ -14,7 +14,7 @@ from stable_baselines3.common.torch_layers import (
     OutAndState,
     create_mlp,
 )
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, unwrap
 
 
 class QNetwork(BasePolicy):
@@ -65,7 +65,7 @@ class QNetwork(BasePolicy):
         :param obs: Observation
         :return: The estimated Q-Value for each action.
         """
-        return self.extract_features(obs, extractor_state, self.features_extractor).apply(self.q_net)
+        return self.extract_features(obs, extractor_state, unwrap(self.features_extractor)).apply(self.q_net)
 
     def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = True) -> OutAndState[th.Tensor]:
         q_values = self(observation, extractor_state)
