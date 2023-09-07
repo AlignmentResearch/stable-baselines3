@@ -27,6 +27,8 @@ def register_dataclass_as_pytree(Cls, whitelist: Optional[Sequence[str]] = None)
         return Cls(**dict(zip(names, values)))
 
     ot.register_pytree_node(Cls, flatten_fn, unflatten_fn, namespace=OT_NAMESPACE)
+
+    Cls.__iter__ = lambda self: iter(getattr(self, n) for n in names)
     return Cls
 
 

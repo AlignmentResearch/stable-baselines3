@@ -3,6 +3,7 @@ from typing import Dict, Optional
 import gymnasium as gym
 import numpy as np
 import pytest
+from tests.test_train_eval_mode import OutAndState
 import torch as th
 from gymnasium import spaces
 
@@ -115,11 +116,11 @@ class CustomPolicy(ActorCriticPolicy):
         super().__init__(*args, **kwargs)
         self.constant_value = 0.0
 
-    def forward(self, obs, deterministic=False):
-        actions, values, log_prob = super().forward(obs, deterministic)
+    def forward(self, obs, extractor_state, deterministic=False):
+        (actions, values, log_prob), state = super().forward(obs, extractor_state, deterministic=deterministic)
         # Overwrite values with ones
         values = th.ones_like(values) * self.constant_value
-        return actions, values, log_prob
+        return OutAndState((actions, values, log_prob), state)
 
 
 @pytest.mark.parametrize("env_cls", [CustomEnv, InfiniteHorizonEnv])
@@ -176,9 +177,9 @@ def test_infinite_horizon(model_class, handle_timeout_termination):
     # Value of the initial state
     obs_tensor = model.policy.obs_to_tensor(0)[0]
     if model_class == A2C:
-        value = model.policy.predict_values(obs_tensor).item()
+        value = model.policy.predict_values(obs_tensor, model.policy.initial_state()).out.item()
     else:
-        value = model.critic(obs_tensor, model.actor(obs_tensor))[0].item()
+        value = model.critic(obs_tensor, model.actor(obs_tensor, model.actor.initial_state()).out, model.critic.initial_state()).out[0].item()
     # True value (geometric series with a reward of one at each step)
     infinite_horizon_value = 1 / (1 - gamma)
 

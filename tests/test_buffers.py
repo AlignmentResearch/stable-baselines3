@@ -2,6 +2,7 @@ import gymnasium as gym
 import numpy as np
 import optree as ot
 import pytest
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 
@@ -123,7 +124,11 @@ def test_device_buffer(replay_buffer_cls, device):
     }[replay_buffer_cls]
     env = make_vec_env(env)
 
-    extractor_state_example = {"a": {"b": th.rand((4))}}
+    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
+        extractor_state_example = {"a": {"b": th.rand((4))}}
+    else:
+        extractor_state_example = ()
+
     buffer = replay_buffer_cls(
         100, env.observation_space, env.action_space, extractor_state_example=extractor_state_example, device=device
     )
@@ -132,13 +137,14 @@ def test_device_buffer(replay_buffer_cls, device):
     obs = env.reset()
     for _ in range(100):
         action = th.as_tensor(env.action_space.sample())
-        extractor_states = {"a": {"b": th.rand((env.num_envs, 4))}}
 
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
+            extractor_states = {"a": {"b": th.rand((env.num_envs, 4))}}
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(obs, action, reward, episode_start, values, log_prob, extractor_states=extractor_states)
         else:
+            extractor_states = ()
             buffer.add(obs, next_obs, action, reward, done, info, extractor_states=extractor_states)
         obs = next_obs
 
@@ -155,4 +161,4 @@ def test_device_buffer(replay_buffer_cls, device):
         def _assert_device(value):
             assert value.device.type == desired_device
 
-        ot.tree_map(_assert_device, value)
+        ot.tree_map(_assert_device, value, namespace=OT_NAMESPACE)

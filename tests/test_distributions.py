@@ -70,11 +70,12 @@ def dummy_model_distribution_obs_and_actions() -> Tuple[A2C, np.ndarray, np.ndar
 def test_get_distribution(dummy_model_distribution_obs_and_actions):
     model, random_obs, random_actions = dummy_model_distribution_obs_and_actions
     # Check that evaluate actions return the same thing as get_distribution
+    extractor_states = model.initial_state()
     with th.no_grad():
         observations, _ = model.policy.obs_to_tensor(random_obs)
         actions = th.tensor(random_actions, device=observations.device).float()
-        _, log_prob_1, entropy_1 = model.policy.evaluate_actions(observations, actions)
-        distribution = model.policy.get_distribution(observations)
+        _, log_prob_1, entropy_1 = model.policy.evaluate_actions(observations, actions, extractor_states).out
+        distribution = model.policy.get_distribution(observations, extractor_states).out
         log_prob_2 = distribution.log_prob(actions)
         entropy_2 = distribution.entropy()
         assert entropy_1 is not None
@@ -86,11 +87,12 @@ def test_get_distribution(dummy_model_distribution_obs_and_actions):
 def test_predict_values(dummy_model_distribution_obs_and_actions):
     model, random_obs, random_actions = dummy_model_distribution_obs_and_actions
     # Check that evaluate_actions return the same thing as predict_values
+    extractor_states = model.initial_state()
     with th.no_grad():
         observations, _ = model.policy.obs_to_tensor(random_obs)
         actions = th.tensor(random_actions, device=observations.device).float()
-        values_1, _, _ = model.policy.evaluate_actions(observations, actions)
-        values_2 = model.policy.predict_values(observations)
+        values_1, _, _ = model.policy.evaluate_actions(observations, actions, extractor_states).out
+        values_2 = model.policy.predict_values(observations, extractor_states).out
         assert th.allclose(values_1, values_2)
 
 
