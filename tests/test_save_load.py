@@ -487,10 +487,10 @@ def test_save_load_policy(tmp_path, model_class, policy_str, use_sde):
     params = new_params
 
     # get selected actions
-    selected_actions, _ = policy.predict(observations, deterministic=True)
+    selected_actions, _ = policy.predict(observations, policy.initial_state(), deterministic=True)
     # Should also work with the actor only
     if actor is not None:
-        selected_actions_actor, _ = actor.predict(observations, deterministic=True)
+        selected_actions_actor, _ = actor.predict(observations, policy.initial_state(), deterministic=True)
 
     # Save and load policy
     policy.save(tmp_path / "policy.pkl")
@@ -512,11 +512,11 @@ def test_save_load_policy(tmp_path, model_class, policy_str, use_sde):
         assert th.allclose(params[key], new_params[key]), "Policy parameters not the same after save and load."
 
     # check if model still selects the same actions
-    new_selected_actions, _ = policy.predict(observations, deterministic=True)
+    new_selected_actions, _ = policy.predict(observations, policy.initial_state(), deterministic=True)
     assert np.allclose(selected_actions, new_selected_actions, 1e-4)
 
     if actor_class is not None:
-        new_selected_actions_actor, _ = actor.predict(observations, deterministic=True)
+        new_selected_actions_actor, _ = actor.predict(observations, policy.initial_state(), deterministic=True)
         assert np.allclose(selected_actions_actor, new_selected_actions_actor, 1e-4)
         assert np.allclose(selected_actions_actor, new_selected_actions, 1e-4)
 

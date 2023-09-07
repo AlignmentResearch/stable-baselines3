@@ -73,15 +73,15 @@ class Actor(BasePolicy):
         )
         return data
 
-    def forward(self, obs: th.Tensor, state: PyTree) -> OutAndState[th.Tensor]:
+    def forward(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
-        features = self.extract_features(obs, state, self.features_extractor)
+        features = self.extract_features(obs, extractor_state, self.features_extractor)
         return OutAndState(self.mu(features.out), features.state)
 
-    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
-        return self(observation, state)
+        return self(observation, extractor_state)
 
 
 class TD3Policy(BasePolicy):

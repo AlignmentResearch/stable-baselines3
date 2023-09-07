@@ -400,11 +400,16 @@ class ReplayBuffer(BaseBuffer):
             raise NotImplementedError("Replay buffer doesn't know how to return time-contiguous samples (see above lines).")
 
         idx = np.s_[batch_inds, env_indices, ...]
+        if self.optimize_memory_usage:
+            next_obs = index_into_pytree(np.s_[(batch_inds + 1) % self.buffer_size, env_indices, :], self.observations)
+        else:
+            next_obs = index_into_pytree(idx, self.next_observations)
+
         out = ReplayBufferSamples(
             observations=self._normalize_obs(index_into_pytree(idx, self.observations), env),
             actions=self.actions[idx],
-            next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations), env),
-            dones=self.dones[idx] * (1 - self.timeouts[idx].view(-1, 1)),
+            next_observations=self._normalize_obs(next_obs, env),
+            dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
             rewards=self._normalize_reward(self.rewards[idx].view(-1, 1), env),
             extractor_states=index_into_pytree(idx, self.extractor_states),
         )

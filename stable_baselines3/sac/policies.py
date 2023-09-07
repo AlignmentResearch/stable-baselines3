@@ -183,8 +183,8 @@ class Actor(BasePolicy):
         action_dist = self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
         return OutAndState(action_dist, action_dist_params.state)
 
-    def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState:
-        return self(observation, state=state, deterministic=deterministic)
+    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState:
+        return self(observation, extractor_state=extractor_state, deterministic=deterministic)
 
 
 class SACPolicy(BasePolicy):
