@@ -184,7 +184,7 @@ class Actor(BasePolicy):
         return OutAndState(action_dist, action_dist_params.state)
 
     def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState:
-        return self(observation, deterministic, state=state)
+        return self(observation, state=state, deterministic=deterministic)
 
 
 class SACPolicy(BasePolicy):
@@ -366,8 +366,13 @@ class SACPolicy(BasePolicy):
     def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         return self._predict(obs, extractor_state, deterministic=deterministic)
 
-    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        return self.actor(observation, extractor_state, deterministic=deterministic)
+    def _predict(
+        self, observation: th.Tensor, extractor_state: PolicyValueExtractorState, deterministic: bool = False
+    ) -> OutAndState[th.Tensor]:
+        out_and_actor_state = self.actor(observation, extractor_state.pi_state, deterministic=deterministic)
+        return OutAndState(
+            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)
+        )
 
     def set_training_mode(self, mode: bool) -> None:
         """

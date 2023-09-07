@@ -27,7 +27,7 @@ def test_discrete(model_class, env):
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=90, warn=False)
     obs, _ = env.reset()
 
-    assert np.shape(model.predict(obs)[0]) == np.shape(obs)
+    assert np.shape(model.predict(obs, state=()).out) == np.shape(obs)
 
 
 @pytest.mark.parametrize("model_class", [A2C, PPO, SAC, DDPG, TD3])

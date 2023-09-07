@@ -81,7 +81,7 @@ class Actor(BasePolicy):
     def _predict(self, observation: th.Tensor, state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
-        return self(observation)
+        return self(observation, state)
 
 
 class TD3Policy(BasePolicy):
@@ -245,7 +245,10 @@ class TD3Policy(BasePolicy):
     def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
-        return self.actor(observation, extractor_state)
+        out_and_actor_state = self.actor(observation, extractor_state.pi_state)
+        return OutAndState(
+            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)
+        )
 
     def set_training_mode(self, mode: bool) -> None:
         """
