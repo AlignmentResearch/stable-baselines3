@@ -390,7 +390,6 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
             pred = self.predict(self._last_obs, extractor_state, deterministic=False)
             unscaled_action = pred.out
-            _ = ot.tree_map(lambda x, y: 4, pred.state, extractor_state, namespace=OT_NAMESPACE)
             extractor_state = pred.state
 
         # Rescale the action from [low, high] to [-1, 1]
