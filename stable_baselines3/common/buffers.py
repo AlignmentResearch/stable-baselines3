@@ -394,7 +394,7 @@ class ReplayBuffer(BaseBuffer):
     def _get_samples(self, batch_inds: Union[slice, th.Tensor], env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
-            batch_inds = th.arange(batch_inds.start, batch_inds.stop, batch_inds.step, device=self.buffer_device)
+            batch_inds = th.arange(batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device)
         env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
         if self.policy_is_recurrent:
             raise NotImplementedError("Replay buffer doesn't know how to return time-contiguous samples (see above lines).")
@@ -813,7 +813,7 @@ class DictReplayBuffer(ReplayBuffer):
     ) -> DictReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
-            batch_inds = th.arange(batch_inds.start, batch_inds.stop, batch_inds.step, device=self.buffer_device)
+            batch_inds = th.arange(batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device)
         if env_inds is None:
             env_inds = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 

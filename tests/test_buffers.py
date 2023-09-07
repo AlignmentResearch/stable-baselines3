@@ -148,17 +148,22 @@ def test_device_buffer(replay_buffer_cls, device):
             buffer.add(obs, next_obs, action, reward, done, info, extractor_states=extractor_states)
         obs = next_obs
 
-    # Get data from the buffer
-    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-        data = buffer.get(50)
-    elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
-        data = buffer.sample(50)
-
     # Check that all data are on the desired device
     desired_device = get_device(device).type
-    for value in list(data):
-
+    def _check_data_device(data):
         def _assert_device(value):
             assert value.device.type == desired_device
+        ot.tree_map(_assert_device, data, namespace=OT_NAMESPACE)
 
-        ot.tree_map(_assert_device, value, namespace=OT_NAMESPACE)
+    # Get data from the buffer
+    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
+        _check_data_device(list(buffer.get(50)))
+        _check_data_device(list(buffer.get()))
+    elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
+        _check_data_device(list(buffer.sample(50)))
+
+    # Check _get_samples with slices that have None
+    buffer._get_samples(slice(None))
+    buffer._get_samples(slice(2))
+    buffer._get_samples(slice(2, 4))
+    buffer._get_samples(slice(0, 4, 2))
