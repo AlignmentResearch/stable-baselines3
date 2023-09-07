@@ -361,7 +361,12 @@ def test_save_load_replay_buffer(tmp_path, model_class):
     old_replay_buffer = deepcopy(model.replay_buffer)
     model.save_replay_buffer(path)
     model.replay_buffer = None
-    model.load_replay_buffer(path)
+    for device in ["cpu", "cuda"]:
+        # Manually force device to check that the replay buffer device
+        # is correctly updated
+        model.device = th.device(device)
+        model.load_replay_buffer(path)
+        assert model.replay_buffer.device.type == model.device.type
 
     assert np.allclose(old_replay_buffer.observations, model.replay_buffer.observations)
     assert np.allclose(old_replay_buffer.actions, model.replay_buffer.actions)
@@ -678,8 +683,8 @@ def test_open_file(tmp_path):
     buff = io.BytesIO()
     assert buff.writable()
     assert buff.readable() is ("w" == "w")
-    _ = open_path(buff, "w")
-    assert _ is buff
+    opened_buffer = open_path(buff, "w")
+    assert opened_buffer is buff
     with pytest.raises(ValueError):
         buff.close()
         open_path(buff, "w")

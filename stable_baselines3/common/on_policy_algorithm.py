@@ -180,9 +180,16 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
             # Rescale and perform action
             clipped_actions = actions
-            # Clip the actions to avoid out of bound error
+
             if isinstance(self.action_space, spaces.Box):
-                clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
+                if self.policy.squash_output:
+                    # Unscale the actions to match env bounds
+                    # if they were previously squashed (scaled in [-1, 1])
+                    clipped_actions = self.policy.unscale_action(clipped_actions)
+                else:
+                    # Otherwise, clip the actions to avoid out of bound error
+                    # as we are sampling from an unbounded Gaussian distribution
+                    clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -235,6 +242,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), extractor_state=extractor_states)  # type: ignore[arg-type]
 
         rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
+
+        callback.update_locals(locals())
 
         callback.on_rollout_end()
 

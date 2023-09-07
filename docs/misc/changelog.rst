@@ -3,6 +3,47 @@
 Changelog
 ==========
 
+Release 2.2.0a1 (WIP)
+--------------------------
+
+Breaking Changes:
+^^^^^^^^^^^^^^^^^
+
+New Features:
+^^^^^^^^^^^^^
+
+`SB3-Contrib`_
+^^^^^^^^^^^^^^
+
+`RL Zoo`_
+^^^^^^^^^
+
+Bug Fixes:
+^^^^^^^^^^
+- Prevents using squash_output and not use_sde in ActorCritcPolicy (@PatrickHelm)
+- Performs unscaling of actions in collect_rollout in OnPolicyAlgorithm (@PatrickHelm)
+- Moves VectorizedActionNoise into ``_setup_learn()`` in OffPolicyAlgorithm (@PatrickHelm)
+- Prevents out of bound error on Windows if no seed is passed (@PatrickHelm)
+- Calls ``callback.update_locals()`` before ``callback.on_rollout_end()`` in OnPolicyAlgorithm (@PatrickHelm)
+- Fixes replay buffer device after loading in OffPolicyAlgorithm (@PatrickHelm)
+
+
+Deprecations:
+^^^^^^^^^^^^^
+
+Others:
+^^^^^^^
+- Fixed ``stable_baselines3/common/callbacks.py`` type hints
+- Fixed ``stable_baselines3/common/utils.py`` type hints
+- Fixed ``stable_baselines3/common/vec_envs/vec_transpose.py`` type hints
+- Fixed ``stable_baselines3/common/vec_env/vec_video_recorder.py`` type hints
+- Fixed ``stable_baselines3/common/save_util.py`` type hints
+- Updated docker images to  Ubuntu Jammy using micromamba 1.5
+
+Documentation:
+^^^^^^^^^^^^^^
+
+
 Release 2.1.0 (2023-08-17)
 --------------------------
 
@@ -1410,4 +1451,4 @@ And all the contributors:
 @Melanol @qgallouedec @francescoluciano @jlp-ue @burakdmb @timothe-chaumont @honglu2875
 @anand-bala @hughperkins @sidney-tio @AlexPasqua @dominicgkerr @Akhilez @Rocamonde @tobirohrer @ZikangXiong
 @DavyMorgan @luizapozzobon @Bonifatius94 @theSquaredError @harveybellini @DavyMorgan @FieteO @jonasreiher @npit @WeberSamuel @troiganto
-@lutogniew @lbergmann1 @lukashass @BertrandDecoster @pseudo-rnd-thoughts @stefanbschneider @kyle-he
+@lutogniew @lbergmann1 @lukashass @BertrandDecoster @pseudo-rnd-thoughts @stefanbschneider @kyle-he @PatrickHelm

@@ -252,6 +252,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             if truncate_last_traj:
                 self.replay_buffer.truncate_last_trajectory()
 
+        # Update saved replay buffer device to match current setting, see GH#1561
+        self.replay_buffer.device = self.device
+
     def _setup_learn(
         self,
         total_timesteps: int,
@@ -286,6 +289,14 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Go to the previous index
             pos = (replay_buffer.pos - 1) % replay_buffer.buffer_size
             replay_buffer.dones[pos] = True
+
+        # Vectorize action noise if needed
+        if (
+            self.action_noise is not None
+            and self.env.num_envs > 1
+            and not isinstance(self.action_noise, VectorizedActionNoise)
+        ):
+            self.action_noise = VectorizedActionNoise(self.action_noise, self.env.num_envs)
 
         return super()._setup_learn(
             total_timesteps,
@@ -532,10 +543,6 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
         if env.num_envs > 1:
             assert train_freq.unit == TrainFrequencyUnit.STEP, "You must use only one env when doing episodic training."
-
-        # Vectorize action noise if needed
-        if action_noise is not None and env.num_envs > 1 and not isinstance(action_noise, VectorizedActionNoise):
-            action_noise = VectorizedActionNoise(action_noise, env.num_envs)
 
         if self.use_sde:
             self.actor.reset_noise(env.num_envs)
