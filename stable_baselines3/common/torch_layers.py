@@ -1,20 +1,23 @@
 from typing import Callable, Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union, cast
 
 import gymnasium as gym
+from stable_baselines3.common.buffers import index_into_pytree
 import torch as th
 from gymnasium import spaces
 from torch import nn
-from optree import PyTree, tree_map
+from optree import PyTree
+import optree as ot
 
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
 from stable_baselines3.common.type_aliases import TensorDict, OutAndState, EMPTY_PYTREE
 from stable_baselines3.common.utils import get_device
-from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE, dataclass_frozen_pytree
 
 
 T = TypeVar("T")
 
 ExtractorOutput = OutAndState[th.Tensor]
+
 
 class BaseFeaturesExtractor(nn.Module):
     """
@@ -43,7 +46,9 @@ class BaseFeaturesExtractor(nn.Module):
     def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
         if n_envs is None:
             return self._initial_state()
-        return tree_map(lambda x: x.unsqueeze(0).repeat((n_envs,) + (1,) * x.ndim), self._initial_state())
+        return ot.tree_map(
+            lambda x: x.unsqueeze(0).repeat((n_envs,) + (1,) * x.ndim), self._initial_state(), namespace=OT_NAMESPACE
+        )
 
 
 class FlattenExtractor(BaseFeaturesExtractor):
@@ -294,8 +299,20 @@ class CombinedExtractor(BaseFeaturesExtractor):
     def forward(self, observations: TensorDict, state: Dict[str, PyTree[th.Tensor]]) -> OutAndState[th.Tensor]:  # type: ignore
         encoded_tensor_list = []
         out_states = {}
+        # TODO(adria) does this work?
+
+        def _is_leaf(x):
+            return isinstance(x, dict) and set(x.keys()) == set(observations.keys())
+
+        if isinstance(observations, dict):
+            is_leaf = _is_leaf
+        else:
+            is_leaf = False
+
         for key, extractor in self.extractors.items():
-            out: OutAndState[th.Tensor] = extractor(observations[key], state[key])
+            # Convert state to a tuple so index_into_pytree works for top-level dicts
+            (indexed_state,) = index_into_pytree(key, (state,), is_leaf=is_leaf)
+            out: OutAndState[th.Tensor] = extractor(observations[key], indexed_state)
             encoded_tensor_list.append(out.out)
             out_states[key] = out.state
 

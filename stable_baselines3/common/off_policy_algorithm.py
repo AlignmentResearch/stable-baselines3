@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import numpy as np
 from optree import PyTree
 import optree as ot
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 
@@ -368,7 +369,6 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             and scaled action that will be stored in the replay buffer.
             The two differs when the action space is not normalized (bounds are not [-1, 1]).
         """
-        assert extractor_state is not False
         # Select action randomly or according to policy
         if self.num_timesteps < learning_starts and not (self.use_sde and self.use_sde_at_warmup):
             # Warmup phase
@@ -379,8 +379,8 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
             pred = self.predict(self._last_obs, extractor_state, deterministic=False)
             unscaled_action = pred.out
+            _ = ot.tree_map(lambda x, y: 4, pred.state, extractor_state, namespace=OT_NAMESPACE)
             extractor_state = pred.state
-        assert extractor_state is not False
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, spaces.Box):

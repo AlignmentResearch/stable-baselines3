@@ -1,6 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generator, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, TypeVar, Union
 
 import numpy as np
 import optree as ot
@@ -31,9 +31,14 @@ except ImportError:
 TPyTree = TypeVar("TPyTree", bound=PyTree[th.Tensor])
 
 
-
-def index_into_pytree(idx: TensorIndex, tree: PyTree[th.Tensor], namespace: str = NS) -> PyTree[th.Tensor]:
-    return ot.tree_map(lambda x: x[idx], tree, namespace=namespace)
+def index_into_pytree(
+    idx: TensorIndex,
+    tree: PyTree[th.Tensor],
+    is_leaf: Optional[Union[bool, Callable[[PyTree[th.Tensor]], bool]]] = None,
+    none_is_leaf: bool = False,
+    namespace: str = NS,
+) -> PyTree[th.Tensor]:
+    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
 class BaseBuffer(ABC):
@@ -791,7 +796,6 @@ class DictReplayBuffer(ReplayBuffer):
         :return:
         """
         return super(ReplayBuffer, self).sample(batch_size=batch_size, env=env)
-
 
     def _get_samples(  # type: ignore[override]
         self,

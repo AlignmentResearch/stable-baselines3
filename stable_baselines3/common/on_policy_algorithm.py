@@ -213,7 +213,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         with th.no_grad():
                             terminal_extractor_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), extractor_states, namespace=OT_NAMESPACE)
                             episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
-                            terminal_value_and_state = self.policy.predict(terminal_obs, terminal_extractor_state, episode_starts)
+                            terminal_value_and_state = self.policy.predict_values(terminal_obs, terminal_extractor_state)
                             terminal_value = terminal_value_and_state.out.squeeze()
                         rewards[idx] += self.gamma * terminal_value
 

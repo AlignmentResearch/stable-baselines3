@@ -32,7 +32,7 @@ def test_deterministic_training_common(algo):
         env = model.get_env()
         obs = env.reset()
         for _ in range(100):
-            action, _ = model.predict(obs, deterministic=False)
+            action = model.predict(obs, deterministic=False).out
             obs, reward, _, _ = env.step(action)
             results[i].append(action)
             rewards[i].append(reward)

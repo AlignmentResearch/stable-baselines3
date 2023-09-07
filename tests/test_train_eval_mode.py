@@ -1,14 +1,16 @@
-from typing import Union
+from typing import Optional, Union
 
 import gymnasium as gym
 import numpy as np
 import pytest
 import torch as th
 import torch.nn as nn
+from optree import PyTree
 
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.type_aliases import OutAndState
 
 MODEL_LIST = [
     PPO,
@@ -36,11 +38,14 @@ class FlattenBatchNormDropoutExtractor(BaseFeaturesExtractor):
         self.batch_norm = nn.BatchNorm1d(self._features_dim)
         self.dropout = nn.Dropout(0.5)
 
-    def forward(self, observations: th.Tensor) -> th.Tensor:
+    def forward(self, observations: th.Tensor, states: PyTree) -> th.Tensor:
         result = self.flatten(observations)
         result = self.batch_norm(result)
         result = self.dropout(result)
-        return result
+        return OutAndState(result, states)
+
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        return ()
 
 
 def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> (th.Tensor, th.Tensor):
@@ -370,9 +375,9 @@ def test_predict_with_dropout_batch_norm(model_class, env_id):
 
     env = model.get_env()
     observation = env.reset()
-    first_prediction, _ = model.predict(observation, deterministic=True)
+    first_prediction = model.predict(observation, deterministic=True).out
     for _ in range(5):
-        prediction, _ = model.predict(observation, deterministic=True)
+        prediction = model.predict(observation, deterministic=True).out
         np.testing.assert_allclose(first_prediction, prediction)
 
     batch_norm_stats_after = clone_helper(model)

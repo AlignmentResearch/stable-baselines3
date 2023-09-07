@@ -143,15 +143,15 @@ def test_consistency(model_class):
             kwargs["learning_starts"] = 0
 
     dict_model = model_class("MultiInputPolicy", dict_env, gamma=0.5, seed=1, **kwargs)
-    action_before_learning_1, _ = dict_model.predict(obs, deterministic=True)
+    action_before_learning_1 = dict_model.predict(obs, deterministic=True).out
     dict_model.learn(total_timesteps=n_steps)
 
     normal_model = model_class("MlpPolicy", env, gamma=0.5, seed=1, **kwargs)
-    action_before_learning_2, _ = normal_model.predict(obs["vec"], deterministic=True)
+    action_before_learning_2 = normal_model.predict(obs["vec"], deterministic=True).out
     normal_model.learn(total_timesteps=n_steps)
 
-    action_1, _ = dict_model.predict(obs, deterministic=True)
-    action_2, _ = normal_model.predict(obs["vec"], deterministic=True)
+    action_1 = dict_model.predict(obs, deterministic=True).out
+    action_2 = normal_model.predict(obs["vec"], deterministic=True).out
 
     assert np.allclose(action_before_learning_1, action_before_learning_2)
     assert np.allclose(action_1, action_2)
