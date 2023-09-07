@@ -119,13 +119,21 @@ class BaseBuffer(ABC):
         """
         raise NotImplementedError()
 
-    def extend(self, *args, **kwargs) -> None:
+    def extend(self, *args) -> None:
         """
         Add a new batch of transitions to the buffer
         """
-        # Do a for loop along the batch axis
-        for data in zip(*args):
-            self.add(*data)
+
+        # Do a for loop along the batch axis.
+        # Treat lists as leaves to avoid flattening the infos.
+        def _is_list(t):
+            return isinstance(t, list)
+
+        tensors, _ = ot.tree_flatten(args, is_leaf=_is_list, namespace=NS)
+        len_tensors = len(tensors[0])
+        assert all(len(t) == len_tensors for t in tensors), "All tensors must have the same batch size"
+        for i in range(len_tensors):
+            self.add(*index_into_pytree(i, args, is_leaf=_is_list, namespace=NS))
 
     def reset(self) -> None:
         """
@@ -154,10 +162,6 @@ class BaseBuffer(ABC):
         :param env:
         :return:
         """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def postprocess_samples(self, samples: TPyTree) -> TPyTree:
         raise NotImplementedError()
 
     def to_device(self, array: th.Tensor, copy: bool = True) -> th.Tensor:
@@ -590,9 +594,9 @@ class RolloutBuffer(BaseBuffer):
                 yield self._get_samples(indices[start_idx : start_idx + batch_size])
                 start_idx += batch_size
 
-    def postprocess_samples(self, samples: TPyTree) -> TPyTree:
+    def index_samples(self, batch_inds: TensorIndex, samples: TPyTree) -> TPyTree:
         return ot.tree_map(
-            lambda arr, to_flatten: self.to_device(self.swap_and_flatten(arr, to_flatten)),
+            lambda arr, to_flatten: self.to_device(self.swap_and_flatten(arr, to_flatten)[batch_inds]),
             samples,
             ot.tree_broadcast_prefix(self.TO_FLATTEN, samples, namespace=NS),
             namespace=NS,
@@ -622,8 +626,7 @@ class RolloutBuffer(BaseBuffer):
             returns=self.returns,
             extractor_states=self.extractor_states,
         )
-        out = index_into_pytree(batch_inds, out)
-        return self.postprocess_samples(out)
+        return self.index_samples(batch_inds, out)
 
 
 class DictReplayBuffer(ReplayBuffer):
@@ -1003,5 +1006,4 @@ class DictRolloutBuffer(RolloutBuffer):
             returns=self.returns,
             extractor_states=self.extractor_states,
         )
-        out = index_into_pytree(batch_inds, out)
-        return self.postprocess_samples(out)
+        return self.index_samples(batch_inds, out)

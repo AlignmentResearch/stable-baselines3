@@ -369,6 +369,9 @@ class SACPolicy(BasePolicy):
     def _predict(
         self, observation: th.Tensor, extractor_state: PolicyValueExtractorState, deterministic: bool = False
     ) -> OutAndState[th.Tensor]:
+        if self.share_features_extractor:
+            return self.actor(observation, extractor_state, deterministic=deterministic)
+
         out_and_actor_state = self.actor(observation, extractor_state.pi_state, deterministic=deterministic)
         return OutAndState(
             out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)

@@ -12,6 +12,7 @@ from copy import deepcopy
 import gymnasium as gym
 import numpy as np
 import pytest
+from tests.test_buffers import ReplayBufferSamples
 import torch as th
 
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
@@ -377,6 +378,7 @@ def test_save_load_replay_buffer(tmp_path, model_class):
         old_replay_buffer.rewards,
         old_replay_buffer.dones,
         infos,
+        model.initial_state(model.n_envs),
     )
 
 
