@@ -135,7 +135,7 @@ class A2C(OnPolicyAlgorithm):
         # Update optimizer learning rate
         self._update_learning_rate(self.policy.optimizer)
 
-        if not tree_empty(unwrap(self._last_extractor_states)):
+        if not tree_empty(unwrap(self._last_recurrent_states)):
             raise NotImplementedError("Stateful policies not implemented for A2C")
 
         # This will only loop once (get all data in one go)
@@ -145,7 +145,7 @@ class A2C(OnPolicyAlgorithm):
                 # Convert discrete action from float to long
                 actions = actions.long().flatten()
 
-            vle = self.policy.evaluate_actions(rollout_data.observations, actions, unwrap(self._last_extractor_states))
+            vle = self.policy.evaluate_actions(rollout_data.observations, actions, unwrap(self._last_recurrent_states))
             values, log_prob, entropy = vle.out
             values = values.flatten()
 

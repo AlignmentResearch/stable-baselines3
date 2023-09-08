@@ -116,8 +116,8 @@ class CustomPolicy(ActorCriticPolicy):
         super().__init__(*args, **kwargs)
         self.constant_value = 0.0
 
-    def forward(self, obs, extractor_state, deterministic=False):
-        (actions, values, log_prob), state = super().forward(obs, extractor_state, deterministic=deterministic)
+    def forward(self, obs, recurrent_state, deterministic=False):
+        (actions, values, log_prob), state = super().forward(obs, recurrent_state, deterministic=deterministic)
         # Overwrite values with ones
         values = th.ones_like(values) * self.constant_value
         return OutAndState((actions, values, log_prob), state)

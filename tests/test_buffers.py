@@ -85,7 +85,7 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     env = make_vec_env(env)
     env = VecNormalize(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, extractor_state_example=(), device="cpu")
+    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, recurrent_state_example=(), device="cpu")
 
     # Interract and store transitions
     env.reset()
@@ -95,7 +95,7 @@ def test_replay_buffer_normalization(replay_buffer_cls):
         _, _, done, info = env.step(action)
         next_obs = env.get_original_obs()
         reward = env.get_original_reward()
-        buffer.add(obs, next_obs, action, reward, done, info, extractor_states=())
+        buffer.add(obs, next_obs, action, reward, done, info, recurrent_states=())
         obs = next_obs
 
     sample = buffer.sample(50, env)
@@ -125,12 +125,12 @@ def test_device_buffer(replay_buffer_cls, device):
     env = make_vec_env(env)
 
     if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-        extractor_state_example = {"a": {"b": th.rand((4))}}
+        recurrent_state_example = {"a": {"b": th.rand((4))}}
     else:
-        extractor_state_example = ()
+        recurrent_state_example = ()
 
     buffer = replay_buffer_cls(
-        100, env.observation_space, env.action_space, extractor_state_example=extractor_state_example, device=device
+        100, env.observation_space, env.action_space, recurrent_state_example=recurrent_state_example, device=device
     )
 
     # Interract and store transitions
@@ -140,12 +140,12 @@ def test_device_buffer(replay_buffer_cls, device):
 
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-            extractor_states = {"a": {"b": th.rand((env.num_envs, 4))}}
+            recurrent_states = {"a": {"b": th.rand((env.num_envs, 4))}}
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
-            buffer.add(obs, action, reward, episode_start, values, log_prob, extractor_states=extractor_states)
+            buffer.add(obs, action, reward, episode_start, values, log_prob, recurrent_states=recurrent_states)
         else:
-            extractor_states = ()
-            buffer.add(obs, next_obs, action, reward, done, info, extractor_states=extractor_states)
+            recurrent_states = ()
+            buffer.add(obs, next_obs, action, reward, done, info, recurrent_states=recurrent_states)
         obs = next_obs
 
     # Check that all data are on the desired device

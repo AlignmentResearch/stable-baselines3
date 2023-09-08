@@ -53,7 +53,7 @@ class HerReplayBuffer(DictReplayBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         env: VecEnv,
         device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "cpu",
@@ -68,7 +68,7 @@ class HerReplayBuffer(DictReplayBuffer):
             buffer_size,
             observation_space,
             action_space,
-            extractor_state_example=extractor_state_example,
+            recurrent_state_example=recurrent_state_example,
             device=device,
             buffer_device=buffer_device,
             n_envs=n_envs,
@@ -145,7 +145,7 @@ class HerReplayBuffer(DictReplayBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:
         # When the buffer is full, we rewrite on old episodes. When we start to
         # rewrite on an old episodes, we want the whole old episode to be deleted
@@ -165,7 +165,7 @@ class HerReplayBuffer(DictReplayBuffer):
         if self.copy_info_dict:
             self.infos[self.pos] = infos
         # Store the transition
-        super().add(obs, next_obs, action, reward, done, infos, extractor_states=extractor_states)
+        super().add(obs, next_obs, action, reward, done, infos, recurrent_states=recurrent_states)
 
         # When episode ends, compute and store the episode length
         for env_idx in range(self.n_envs):
@@ -293,7 +293,7 @@ class HerReplayBuffer(DictReplayBuffer):
                 # deactivated by default (timeouts is initialized as an array of False)
                 dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
                 rewards=self._normalize_reward(rewards.view(-1, 1), env),
-                extractor_states=index_into_pytree(idx, self.extractor_states),
+                recurrent_states=index_into_pytree(idx, self.recurrent_states),
             )
         )
 

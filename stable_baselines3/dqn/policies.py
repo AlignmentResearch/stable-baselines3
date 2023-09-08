@@ -58,17 +58,17 @@ class QNetwork(BasePolicy):
         q_net = create_mlp(self.features_dim, action_dim, self.net_arch, self.activation_fn)
         self.q_net = nn.Sequential(*q_net)
 
-    def forward(self, obs: th.Tensor, extractor_state: PyTree[th.Tensor]) -> OutAndState[th.Tensor]:
+    def forward(self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor]) -> OutAndState[th.Tensor]:
         """
         Predict the q-values.
 
         :param obs: Observation
         :return: The estimated Q-Value for each action.
         """
-        return self.extract_features(obs, extractor_state, unwrap(self.features_extractor)).apply(self.q_net)
+        return self.extract_features(obs, recurrent_state, unwrap(self.features_extractor)).apply(self.q_net)
 
-    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = True) -> OutAndState[th.Tensor]:
-        q_values = self(observation, extractor_state)
+    def _predict(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = True) -> OutAndState[th.Tensor]:
+        q_values = self(observation, recurrent_state)
         # Greedy action
         action = q_values.apply(lambda x: x.argmax(dim=1).reshape(-1))
         return action
@@ -182,11 +182,11 @@ class DQNPolicy(BasePolicy):
     def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
         return self.q_net.initial_state(n_envs)
 
-    def forward(self, obs: th.Tensor, extractor_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
-        return self._predict(obs, extractor_state, deterministic=deterministic)
+    def forward(self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
+        return self._predict(obs, recurrent_state, deterministic=deterministic)
 
-    def _predict(self, obs: th.Tensor, extractor_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
-        return self.q_net._predict(obs, extractor_state, deterministic=deterministic)
+    def _predict(self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
+        return self.q_net._predict(obs, recurrent_state, deterministic=deterministic)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()

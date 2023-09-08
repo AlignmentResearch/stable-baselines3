@@ -147,7 +147,7 @@ class Actor(BasePolicy):
         self.action_dist.sample_weights(self.log_std, batch_size=batch_size)
 
     def get_action_dist_params(
-        self, obs: th.Tensor, extractor_state: PyTree
+        self, obs: th.Tensor, recurrent_state: PyTree
     ) -> OutAndState[Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]]:
         """
         Get the parameters for the action distribution.
@@ -156,7 +156,7 @@ class Actor(BasePolicy):
         :return:
             Mean, standard deviation and optional keyword arguments.
         """
-        features = self.extract_features(obs, extractor_state, unwrap(self.features_extractor))
+        features = self.extract_features(obs, recurrent_state, unwrap(self.features_extractor))
         latent_pi = self.latent_pi(features.out)
         mean_actions = self.mu(latent_pi)
 
@@ -168,23 +168,23 @@ class Actor(BasePolicy):
         log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         return OutAndState((mean_actions, log_std, {}), features.state)
 
-    def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        assert extractor_state is not False
-        action_dist_params = self.get_action_dist_params(obs, extractor_state)
+    def forward(self, obs: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        assert recurrent_state is not False
+        action_dist_params = self.get_action_dist_params(obs, recurrent_state)
         mean_actions, log_std, kwargs = action_dist_params.out
         # Note: the action is squashed
         action = self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
         return OutAndState(action, action_dist_params.state)
 
-    def action_log_prob(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
-        action_dist_params = self.get_action_dist_params(obs, extractor_state)
+    def action_log_prob(self, obs: th.Tensor, recurrent_state: PyTree) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
+        action_dist_params = self.get_action_dist_params(obs, recurrent_state)
         mean_actions, log_std, kwargs = action_dist_params.out
         # return action and associated log prob
         action_dist = self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
         return OutAndState(action_dist, action_dist_params.state)
 
-    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState:
-        return self(observation, extractor_state=extractor_state, deterministic=deterministic)
+    def _predict(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState:
+        return self(observation, recurrent_state=recurrent_state, deterministic=deterministic)
 
 
 class SACPolicy(BasePolicy):
@@ -363,19 +363,19 @@ class SACPolicy(BasePolicy):
         critic_kwargs = self._update_features_extractor(self.critic_kwargs, features_extractor)
         return ContinuousCritic(**critic_kwargs).to(self.device)
 
-    def forward(self, obs: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        return self._predict(obs, extractor_state, deterministic=deterministic)
+    def forward(self, obs: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self._predict(obs, recurrent_state, deterministic=deterministic)
 
     def _predict(
-        self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False
+        self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False
     ) -> OutAndState[th.Tensor]:
         if self.share_features_extractor:
-            return self.actor(observation, extractor_state, deterministic=deterministic)
+            return self.actor(observation, recurrent_state, deterministic=deterministic)
 
-        assert isinstance(extractor_state, PolicyValueExtractorState)
-        out_and_actor_state = self.actor(observation, extractor_state.pi_state, deterministic=deterministic)
+        assert isinstance(recurrent_state, PolicyValueExtractorState)
+        out_and_actor_state = self.actor(observation, recurrent_state.pi_state, deterministic=deterministic)
         return OutAndState(
-            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)
+            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, recurrent_state.vf_state)
         )
 
     def set_training_mode(self, mode: bool) -> None:

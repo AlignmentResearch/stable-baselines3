@@ -56,7 +56,7 @@ class RolloutBufferSamples:
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    extractor_states: PyTree[th.Tensor]
+    recurrent_states: PyTree[th.Tensor]
 
 
 @dataclass_frozen_pytree
@@ -67,7 +67,7 @@ class DictRolloutBufferSamples:
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    extractor_states: PyTree[th.Tensor]
+    recurrent_states: PyTree[th.Tensor]
 
 
 @dataclass_frozen_pytree
@@ -77,7 +77,7 @@ class ReplayBufferSamples:
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
-    extractor_states: PyTree[th.Tensor]
+    recurrent_states: PyTree[th.Tensor]
 
 
 @dataclass_frozen_pytree
@@ -87,7 +87,7 @@ class DictReplayBufferSamples:
     next_observations: TensorDict
     dones: th.Tensor
     rewards: th.Tensor
-    extractor_states: PyTree[th.Tensor]
+    recurrent_states: PyTree[th.Tensor]
 
 
 @dataclass_frozen_pytree

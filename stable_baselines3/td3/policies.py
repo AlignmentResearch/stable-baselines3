@@ -73,15 +73,15 @@ class Actor(BasePolicy):
         )
         return data
 
-    def forward(self, obs: th.Tensor, extractor_state: PyTree) -> OutAndState[th.Tensor]:
+    def forward(self, obs: th.Tensor, recurrent_state: PyTree) -> OutAndState[th.Tensor]:
         # assert deterministic, 'The TD3 actor only outputs deterministic actions'
-        features = self.extract_features(obs, extractor_state, unwrap(self.features_extractor))
+        features = self.extract_features(obs, recurrent_state, unwrap(self.features_extractor))
         return OutAndState(self.mu(features.out), features.state)
 
-    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+    def _predict(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
-        return self(observation, extractor_state)
+        return self(observation, recurrent_state)
 
 
 class TD3Policy(BasePolicy):
@@ -239,19 +239,19 @@ class TD3Policy(BasePolicy):
             pi_state=self.actor.initial_state(n_envs=n_envs), vf_state=self.critic.initial_state(n_envs=n_envs)
         )  # type: ignore[return-type]
 
-    def forward(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
-        return self._predict(observation, extractor_state, deterministic=deterministic)
+    def forward(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+        return self._predict(observation, recurrent_state, deterministic=deterministic)
 
-    def _predict(self, observation: th.Tensor, extractor_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
+    def _predict(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         # Note: the deterministic deterministic parameter is ignored in the case of TD3.
         #   Predictions are always deterministic.
         if self.share_features_extractor:
-            return self.actor(observation, extractor_state)
+            return self.actor(observation, recurrent_state)
 
-        assert isinstance(extractor_state, PolicyValueExtractorState)
-        out_and_actor_state = self.actor(observation, extractor_state.pi_state)
+        assert isinstance(recurrent_state, PolicyValueExtractorState)
+        out_and_actor_state = self.actor(observation, recurrent_state.pi_state)
         return OutAndState(
-            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, extractor_state.vf_state)
+            out_and_actor_state.out, PolicyValueExtractorState(out_and_actor_state.state, recurrent_state.vf_state)
         )
 
     def set_training_mode(self, mode: bool) -> None:

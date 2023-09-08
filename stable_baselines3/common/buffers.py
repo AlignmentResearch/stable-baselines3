@@ -48,7 +48,7 @@ class BaseBuffer(ABC):
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
     :param action_space: Action space
-    :param extractor_state_example: a PyTree with Tensors which show the shape and dtype of the extractor state
+    :param recurrent_state_example: a PyTree with Tensors which show the shape and dtype of the recurrent state
     :param device: PyTorch device
         to which the values will be converted
     :param n_envs: Number of parallel environments
@@ -59,7 +59,7 @@ class BaseBuffer(ABC):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         n_envs: int = 1,
     ):
@@ -68,11 +68,11 @@ class BaseBuffer(ABC):
         self.observation_space = observation_space
         self.action_space = action_space
         self.obs_shape = get_obs_shape(observation_space)
-        # Remove most memory usage for the extractor state example.
-        self.extractor_state_example = ot.tree_map(
-            lambda x: th.zeros((), dtype=x.dtype).expand_as(x), extractor_state_example, namespace=NS
+        # Remove most memory usage for the recurrent state example.
+        self.recurrent_state_example = ot.tree_map(
+            lambda x: th.zeros((), dtype=x.dtype).expand_as(x), recurrent_state_example, namespace=NS
         )
-        self.policy_is_recurrent = not tree_empty(self.extractor_state_example)
+        self.policy_is_recurrent = not tree_empty(self.recurrent_state_example)
 
         self.action_dim = get_action_dim(action_space)
         self.pos = 0
@@ -199,7 +199,7 @@ class ReplayBuffer(BaseBuffer):
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
     :param action_space: Action space
-    :param extractor_state_example: a PyTree with Tensors which show the shape and dtype of the extractor state
+    :param recurrent_state_example: a PyTree with Tensors which show the shape and dtype of the recurrent state
     :param device: PyTorch device
     :param n_envs: Number of parallel environments
     :param optimize_memory_usage: Enable a memory efficient variant
@@ -221,7 +221,7 @@ class ReplayBuffer(BaseBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
@@ -232,7 +232,7 @@ class ReplayBuffer(BaseBuffer):
             buffer_size,
             observation_space,
             action_space,
-            extractor_state_example,
+            recurrent_state_example,
             device=device,
             n_envs=n_envs,
         )
@@ -298,9 +298,9 @@ class ReplayBuffer(BaseBuffer):
             dtype=th.float32,
             device=self.buffer_device,
         )
-        self.extractor_states = ot.tree_map(
+        self.recurrent_states = ot.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.buffer_device),
-            self.extractor_state_example,
+            self.recurrent_state_example,
             namespace=NS,
         )
 
@@ -327,7 +327,7 @@ class ReplayBuffer(BaseBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:
         # Reshape needed when using multiple envs with discrete observations
         # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
@@ -352,7 +352,7 @@ class ReplayBuffer(BaseBuffer):
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
         _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.recurrent_states, recurrent_states, namespace=NS
         )
 
         if self.handle_timeout_termination:
@@ -411,7 +411,7 @@ class ReplayBuffer(BaseBuffer):
             next_observations=self._normalize_obs(next_obs, env),
             dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
             rewards=self._normalize_reward(self.rewards[idx].view(-1, 1), env),
-            extractor_states=index_into_pytree(idx, self.extractor_states),
+            recurrent_states=index_into_pytree(idx, self.recurrent_states),
         )
         return self.postprocess_samples(out)
 
@@ -463,20 +463,20 @@ class RolloutBuffer(BaseBuffer):
     episode_starts: th.Tensor
     log_probs: th.Tensor
     values: th.Tensor
-    extractor_states: PyTree[th.Tensor]
+    recurrent_states: PyTree[th.Tensor]
 
     def __init__(
         self,
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
     ):
-        super().__init__(buffer_size, observation_space, action_space, extractor_state_example, device, n_envs=n_envs)
+        super().__init__(buffer_size, observation_space, action_space, recurrent_state_example, device, n_envs=n_envs)
         self.gae_lambda = gae_lambda
         self.gamma = gamma
         self.reset()
@@ -490,9 +490,9 @@ class RolloutBuffer(BaseBuffer):
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
-        self.extractor_states = ot.tree_map(
+        self.recurrent_states = ot.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.device),
-            self.extractor_state_example,
+            self.recurrent_state_example,
             namespace=NS,
         )
         super().reset()
@@ -542,7 +542,7 @@ class RolloutBuffer(BaseBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:
         """
         :param obs: Observation
@@ -574,7 +574,7 @@ class RolloutBuffer(BaseBuffer):
         self.values[self.pos].copy_(value.flatten(), non_blocking=True)
         self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.recurrent_states, recurrent_states, namespace=NS
         )
 
         self.pos += 1
@@ -614,7 +614,7 @@ class RolloutBuffer(BaseBuffer):
         old_log_prob=True,
         advantages=True,
         returns=True,
-        extractor_states=False,
+        recurrent_states=False,
     )
 
     def _get_samples(
@@ -629,7 +629,7 @@ class RolloutBuffer(BaseBuffer):
             old_log_prob=self.log_probs,
             advantages=self.advantages,
             returns=self.returns,
-            extractor_states=self.extractor_states,
+            recurrent_states=self.recurrent_states,
         )
         return self.index_samples(batch_inds, out)
 
@@ -656,7 +656,7 @@ class DictReplayBuffer(ReplayBuffer):
         buffer_size: int,
         observation_space: spaces.Dict,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         buffer_device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
@@ -664,7 +664,7 @@ class DictReplayBuffer(ReplayBuffer):
         handle_timeout_termination: bool = True,
     ):
         super(ReplayBuffer, self).__init__(
-            buffer_size, observation_space, action_space, extractor_state_example, device, n_envs=n_envs
+            buffer_size, observation_space, action_space, recurrent_state_example, device, n_envs=n_envs
         )
         self.buffer_device = th.device(buffer_device)
 
@@ -713,9 +713,9 @@ class DictReplayBuffer(ReplayBuffer):
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
         self.timeouts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.buffer_device)
-        self.extractor_states = ot.tree_map(
+        self.recurrent_states = ot.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.buffer_device),
-            self.extractor_state_example,
+            self.recurrent_state_example,
             namespace=NS,
         )
 
@@ -748,7 +748,7 @@ class DictReplayBuffer(ReplayBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         # Copy to avoid modification by reference
         assert (
@@ -776,7 +776,7 @@ class DictReplayBuffer(ReplayBuffer):
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
         _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.recurrent_states, recurrent_states, namespace=NS
         )
 
         if self.handle_timeout_termination:
@@ -831,7 +831,7 @@ class DictReplayBuffer(ReplayBuffer):
             next_observations=self._normalize_obs(index_into_pytree(idx, self.next_observations), env),
             dones=(self.dones[idx] * (1 - self.timeouts[idx])).view(-1, 1),
             rewards=self._normalize_reward(self.rewards[idx].view(-1, 1), env),
-            extractor_states=index_into_pytree(idx, self.extractor_states),
+            recurrent_states=index_into_pytree(idx, self.recurrent_states),
         )
         return self.postprocess_samples(out)
 
@@ -866,14 +866,14 @@ class DictRolloutBuffer(RolloutBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        extractor_state_example: PyTree[th.Tensor],
+        recurrent_state_example: PyTree[th.Tensor],
         device: Union[th.device, str] = "auto",
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
     ):
         super(RolloutBuffer, self).__init__(
-            buffer_size, observation_space, action_space, extractor_state_example, device, n_envs=n_envs
+            buffer_size, observation_space, action_space, recurrent_state_example, device, n_envs=n_envs
         )
 
         assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
@@ -906,9 +906,9 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values = self.values.view(self.buffer_size, self.n_envs).zero_()
         self.log_probs = self.log_probs.view(self.buffer_size, self.n_envs).zero_()
         self.advantages = self.advantages.view(self.buffer_size, self.n_envs).zero_()
-        self.extractor_states = ot.tree_map(
+        self.recurrent_states = ot.tree_map(
             lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.device),
-            self.extractor_state_example,
+            self.recurrent_state_example,
             namespace=NS,
         )
         super(RolloutBuffer, self).reset()
@@ -921,7 +921,7 @@ class DictRolloutBuffer(RolloutBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         """
         :param obs: Observation
@@ -959,7 +959,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values[self.pos].copy_(value.flatten(), non_blocking=True)
         self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.recurrent_states, recurrent_states, namespace=NS
         )
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -992,7 +992,7 @@ class DictRolloutBuffer(RolloutBuffer):
         old_log_prob=True,
         advantages=True,
         returns=True,
-        extractor_states=False,
+        recurrent_states=False,
     )
 
     def _get_samples(  # type: ignore[override]
@@ -1009,6 +1009,6 @@ class DictRolloutBuffer(RolloutBuffer):
             old_log_prob=self.log_probs,
             advantages=self.advantages,
             returns=self.returns,
-            extractor_states=self.extractor_states,
+            recurrent_states=self.recurrent_states,
         )
         return self.index_samples(batch_inds, out)

@@ -213,8 +213,8 @@ class SAC(OffPolicyAlgorithm):
         ent_coef_losses, ent_coefs = [], []
         actor_losses, critic_losses = [], []
 
-        extractor_states = unwrap(self._last_extractor_states)
-        if not tree_empty(extractor_states):
+        recurrent_states = unwrap(self._last_recurrent_states)
+        if not tree_empty(recurrent_states):
             raise NotImplementedError("SAC does not support recurrent policies")
 
         for gradient_step in range(gradient_steps):
@@ -226,7 +226,7 @@ class SAC(OffPolicyAlgorithm):
                 self.actor.reset_noise()
 
             # Action by the current actor for the sampled state
-            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations, extractor_state=extractor_states).discard_state(self._no_state_error)
+            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations, recurrent_state=recurrent_states).discard_state(self._no_state_error)
             log_prob = log_prob.reshape(-1, 1)
 
             ent_coef_loss = None
@@ -251,9 +251,9 @@ class SAC(OffPolicyAlgorithm):
 
             with th.no_grad():
                 # Select action according to policy
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations, extractor_state=extractor_states).discard_state(self._no_state_error)
+                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations, recurrent_state=recurrent_states).discard_state(self._no_state_error)
                 # Compute the next Q values: min over all critics targets
-                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions, extractor_state=extractor_states).discard_state(self._no_state_error), dim=1)
+                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions, recurrent_state=recurrent_states).discard_state(self._no_state_error), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 # add entropy term
                 next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
@@ -262,7 +262,7 @@ class SAC(OffPolicyAlgorithm):
 
             # Get current Q-values estimates for each critic network
             # using action from the replay buffer
-            current_q_values = self.critic(replay_data.observations, replay_data.actions, extractor_state=extractor_states).discard_state(self._no_state_error)
+            current_q_values = self.critic(replay_data.observations, replay_data.actions, recurrent_state=recurrent_states).discard_state(self._no_state_error)
 
             # Compute critic loss
             critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
@@ -277,7 +277,7 @@ class SAC(OffPolicyAlgorithm):
             # Compute actor loss
             # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
             # Min over all critic networks
-            q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi, extractor_state=extractor_states).discard_state(self._no_state_error), dim=1)
+            q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi, recurrent_state=recurrent_states).discard_state(self._no_state_error), dim=1)
             min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
             actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())

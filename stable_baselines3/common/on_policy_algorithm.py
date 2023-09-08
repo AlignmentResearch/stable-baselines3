@@ -114,7 +114,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         )
         # pytype:enable=not-instantiable
         self.policy = self.policy.to(self.device)
-        self._last_extractor_states = self.policy.initial_state(self.n_envs)
+        self._last_recurrent_states = self.policy.initial_state(self.n_envs)
 
         buffer_cls = DictRolloutBuffer if isinstance(self.observation_space, spaces.Dict) else RolloutBuffer
 
@@ -122,7 +122,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             self.n_steps,
             self.observation_space,
             self.action_space,
-            extractor_state_example=self.policy.initial_state(),
+            recurrent_state_example=self.policy.initial_state(),
             device=self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
@@ -163,7 +163,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_start()
 
         # Recurrent state from the feature extractor, that will be updated
-        extractor_states = ot.tree_map(lambda x: x.clone(), unwrap(self._last_extractor_states), namespace=OT_NAMESPACE)
+        recurrent_states = ot.tree_map(lambda x: x.clone(), unwrap(self._last_recurrent_states), namespace=OT_NAMESPACE)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -173,8 +173,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                policy_out = self.policy(obs_tensor, extractor_states)
-                extractor_states = policy_out.state
+                policy_out = self.policy(obs_tensor, recurrent_states)
+                recurrent_states = policy_out.state
                 actions, values, log_probs = policy_out.out
             actions = actions.to(env.device)
 
@@ -217,9 +217,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 ):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
-                        terminal_extractor_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), extractor_states, namespace=OT_NAMESPACE)
+                        terminal_recurrent_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), recurrent_states, namespace=OT_NAMESPACE)
                         episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
-                        terminal_value_and_state = self.policy.predict_values(terminal_obs, terminal_extractor_state)
+                        terminal_value_and_state = self.policy.predict_values(terminal_obs, terminal_recurrent_state)
                         terminal_value = terminal_value_and_state.out.squeeze()
                     rewards[idx] += self.gamma * terminal_value
 
@@ -230,15 +230,15 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self._last_episode_starts,  # type: ignore[arg-type]
                 values,
                 log_probs,
-                unwrap(self._last_extractor_states),
+                unwrap(self._last_recurrent_states),
             )
             self._last_obs = new_obs  # type: ignore[assignment]
             self._last_episode_starts = dones
-            self._last_extractor_states = extractor_states
+            self._last_recurrent_states = recurrent_states
 
         with th.no_grad():
             # Compute value for the last timestep
-            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), extractor_state=extractor_states)  # type: ignore[arg-type]
+            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), recurrent_state=recurrent_states)  # type: ignore[arg-type]
 
         rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
 

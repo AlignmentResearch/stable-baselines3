@@ -202,7 +202,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 self.buffer_size,
                 self.observation_space,
                 self.action_space,
-                extractor_state_example=self.policy.initial_state(),
+                recurrent_state_example=self.policy.initial_state(),
                 device=self.device,
                 n_envs=self.n_envs,
                 optimize_memory_usage=self.optimize_memory_usage,
@@ -211,7 +211,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
         # Convert train freq parameter to TrainFreq object
         self._convert_train_freq()
-        self._last_extractor_states = self.policy.initial_state(self.n_envs)
+        self._last_recurrent_states = self.policy.initial_state(self.n_envs)
 
     def save_replay_buffer(self, path: Union[str, pathlib.Path, io.BufferedIOBase]) -> None:
         """
@@ -361,7 +361,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
     def _sample_action(
         self,
         learning_starts: int,
-        extractor_state: PyTree[th.Tensor],
+        recurrent_state: PyTree[th.Tensor],
         action_noise: Optional[ActionNoise] = None,
         n_envs: int = 1,
     ) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
@@ -388,9 +388,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Note: when using continuous actions,
             # we assume that the policy uses tanh to scale the action
             # We use non-deterministic action in the case of SAC, for TD3, it does not matter
-            pred = self.predict(self._last_obs, extractor_state, deterministic=False)
+            pred = self.predict(self._last_obs, recurrent_state, deterministic=False)
             unscaled_action = pred.out
-            extractor_state = pred.state
+            recurrent_state = pred.state
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, spaces.Box):
@@ -407,7 +407,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Discrete case, no need to normalize or clip
             buffer_action = unscaled_action
             action = buffer_action
-        return OutAndState((action, buffer_action), extractor_state)
+        return OutAndState((action, buffer_action), recurrent_state)
 
     def _dump_logs(self) -> None:
         """
@@ -446,7 +446,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         reward: th.Tensor,
         dones: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
+        recurrent_states: PyTree[th.Tensor],
     ) -> None:
         """
         Store transition in the replay buffer.
@@ -495,7 +495,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             reward=reward_,
             done=dones,
             infos=infos,
-            extractor_states=extractor_states,
+            recurrent_states=recurrent_states,
         )
 
         self._last_obs = new_obs
@@ -554,9 +554,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
-            a_and_policy_state = self._sample_action(learning_starts, self._last_extractor_states, action_noise=action_noise, n_envs=env.num_envs)
+            a_and_policy_state = self._sample_action(learning_starts, self._last_recurrent_states, action_noise=action_noise, n_envs=env.num_envs)
             actions, buffer_actions = a_and_policy_state.out
-            self._last_extractor_states = a_and_policy_state.state
+            self._last_recurrent_states = a_and_policy_state.state
 
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
@@ -574,7 +574,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self._update_info_buffer(infos, dones)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
-            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos, extractor_states=self._last_extractor_states)
+            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos, recurrent_states=self._last_recurrent_states)
 
             self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 

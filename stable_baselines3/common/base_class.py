@@ -148,7 +148,7 @@ class BaseAlgorithm(ABC):
         self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
         self._last_original_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
-        self._last_extractor_states: Optional[PyTree[th.Tensor]] = None
+        self._last_recurrent_states: Optional[PyTree[th.Tensor]] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde
