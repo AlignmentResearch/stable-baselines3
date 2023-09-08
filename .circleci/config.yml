@@ -11,6 +11,18 @@ parameters:
     type: string
     default: "113c2e9"
 
+workflows:
+  test-jobs:
+    when:
+      equal: [oncommit, << pipeline.parameters.action >>]
+    jobs:
+      - format-and-mypy:
+          context:
+            - ghcr-auth
+      - py-tests:
+          context:
+            - ghcr-auth
+
 commands:
   save-worker-test-results:
     steps:
@@ -31,7 +43,7 @@ jobs:
       - run: isort --profile black --check .
       - run: black --check .
       - run: mypy .
-  tests:
+  py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
         auth:
