@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
+import torch as th
 
 from stable_baselines3.common import type_aliases
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
@@ -75,15 +76,21 @@ def evaluate_policy(
     episode_rewards = []
     episode_lengths = []
 
-    episode_counts = np.zeros(n_envs, dtype="int")
-    # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = np.array([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype="int")
-
-    current_rewards = np.zeros(n_envs)
-    current_lengths = np.zeros(n_envs, dtype="int")
     observations = env.reset()
+    if isinstance(observations, dict):
+        device = next(iter(observations.values())).device
+    elif isinstance(observations, tuple):
+        device = observations[0].device
+    else:
+        device = observations.device
+    episode_counts = th.zeros(n_envs, dtype=th.int64, device=device)
+    # Divides episodes among different sub environments in the vector as evenly as possible
+    episode_count_targets = th.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device=device)
+
     states = None
-    episode_starts = np.ones((env.num_envs,), dtype=bool)
+    current_rewards = th.zeros(n_envs, dtype=th.float32, device=device)
+    current_lengths = th.zeros(n_envs, dtype=th.int64, device=device)
+    episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=device)
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(
             observations,  # type: ignore[arg-type]
@@ -119,8 +126,8 @@ def evaluate_policy(
                             # Only increment at the real end of an episode
                             episode_counts[i] += 1
                     else:
-                        episode_rewards.append(current_rewards[i])
-                        episode_lengths.append(current_lengths[i])
+                        episode_rewards.append(current_rewards[i].item())
+                        episode_lengths.append(current_lengths[i].item())
                         episode_counts[i] += 1
                     current_rewards[i] = 0
                     current_lengths[i] = 0
