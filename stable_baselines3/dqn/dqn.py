@@ -264,10 +264,13 @@ class DQN(OffPolicyAlgorithm):
                 action = th.stack([th.as_tensor(self.action_space.sample()) for _ in range(n_batch)], dim=0)
             else:
                 action = th.as_tensor(self.action_space.sample())
-            if not tree_empty(unwrap(state)):
+
+            if tree_empty(unwrap(state)):
+                preds = OutAndState(action, state)
+            else:
                 # Run the policy anyways, so it processes the current observation and outputs the recurrent state.
                 next_state = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
-            preds = OutAndState(action, next_state.state)
+                preds = OutAndState(action, next_state.state)
         else:
             preds = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
         return preds
