@@ -216,7 +216,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         and infos[idx].get("terminal_observation") is not None
                         and infos[idx].get("TimeLimit.truncated", False)
                     ):
-                        terminal_obs = self.policy.obs_maybe_transpose(infos[idx]["terminal_observation"])[0]
+                        terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                         with th.no_grad():
                             terminal_extractor_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), extractor_states, namespace=OT_NAMESPACE)
                             episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
