@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional, Union
 
 import numpy as np
+from tests.test_vec_stacked_obs import as_torch_dtype
 import torch as th
 from gymnasium import spaces
 
@@ -12,9 +13,11 @@ from stable_baselines3.common.type_aliases import (
     DictRolloutBufferSamples,
     ReplayBufferSamples,
     RolloutBufferSamples,
+    TensorDict,
 )
-from stable_baselines3.common.utils import get_device
+from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env.util import TensorObsType
 
 try:
     # Check memory used by replay buffer when possible
@@ -273,7 +276,6 @@ class ReplayBuffer(BaseBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
     ) -> None:
         # Reshape needed when using multiple envs with discrete observations
         # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
@@ -297,9 +299,6 @@ class ReplayBuffer(BaseBuffer):
         self.actions[self.pos].copy_(action, non_blocking=True)
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
-        _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
-        )
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
@@ -402,7 +401,6 @@ class RolloutBuffer(BaseBuffer):
     episode_starts: th.Tensor
     log_probs: th.Tensor
     values: th.Tensor
-    extractor_states: PyTree[th.Tensor]
 
     def __init__(
         self,
@@ -475,7 +473,6 @@ class RolloutBuffer(BaseBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: PyTree[th.Tensor],
     ) -> None:
         """
         :param obs: Observation
@@ -659,7 +656,6 @@ class DictReplayBuffer(ReplayBuffer):
         reward: th.Tensor,
         done: th.Tensor,
         infos: List[Dict[str, Any]],
-        extractor_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         # Copy to avoid modification by reference
         assert (
@@ -686,9 +682,6 @@ class DictReplayBuffer(ReplayBuffer):
         self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
         self.rewards[self.pos].copy_(reward, non_blocking=True)
         self.dones[self.pos].copy_(done, non_blocking=True)
-        _ = ot.tree_map(
-            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
-        )
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
@@ -727,9 +720,9 @@ class DictReplayBuffer(ReplayBuffer):
             env_inds = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 
         # Normalize if needed and remove extra dimension (we are using only one env for now)
-        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}, env)
+        obs_ = self._normalize_obs({key: obs[batch_inds, env_inds, :] for key, obs in self.observations.items()}, env)
         next_obs_ = self._normalize_obs(
-            {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}, env
+            {key: obs[batch_inds, env_inds, :] for key, obs in self.next_observations.items()}, env
         )
 
         # Convert to correct device
@@ -738,14 +731,14 @@ class DictReplayBuffer(ReplayBuffer):
 
         return DictReplayBufferSamples(
             observations=observations,
-            actions=self.to_device(self.actions[batch_inds, env_indices]),
+            actions=self.to_device(self.actions[batch_inds, env_inds]),
             next_observations=next_observations,
             # Only use dones that are not due to timeouts
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_device(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
+            dones=self.to_device(self.dones[batch_inds, env_inds] * (1 - self.timeouts[batch_inds, env_inds])).reshape(
                 -1, 1
             ),
-            rewards=self.to_device(self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env)),
+            rewards=self.to_device(self._normalize_reward(self.rewards[batch_inds, env_inds].reshape(-1, 1), env)),
         )
 
 
@@ -818,11 +811,6 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values = self.values.view(self.buffer_size, self.n_envs).zero_()
         self.log_probs = self.log_probs.view(self.buffer_size, self.n_envs).zero_()
         self.advantages = self.advantages.view(self.buffer_size, self.n_envs).zero_()
-        self.extractor_states = ot.tree_map(
-            lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.device),
-            self.extractor_state_example,
-            namespace=NS,
-        )
         super(RolloutBuffer, self).reset()
 
     def add(
@@ -833,7 +821,6 @@ class DictRolloutBuffer(RolloutBuffer):
         episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
-        extractor_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         """
         :param obs: Observation

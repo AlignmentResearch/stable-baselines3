@@ -1,6 +1,6 @@
 from typing import Tuple
 
-import numpy as np
+import torch as th
 
 
 class RunningMeanStd:
@@ -12,8 +12,8 @@ class RunningMeanStd:
         :param epsilon: helps with arithmetic issues
         :param shape: the shape of the data stream's output
         """
-        self.mean = np.zeros(shape, np.float64)
-        self.var = np.ones(shape, np.float64)
+        self.mean = th.zeros(shape, dtype=th.float64)
+        self.var = th.ones(shape, dtype=th.float64)
         self.count = epsilon
 
     def copy(self) -> "RunningMeanStd":

@@ -357,7 +357,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         learning_starts: int,
         action_noise: Optional[ActionNoise] = None,
         n_envs: int = 1,
-    ) -> OutAndState[Tuple[th.Tensor, th.Tensor]]:
+    ) -> Tuple[th.Tensor, th.Tensor]:
         """
         Sample an action according to the exploration policy.
         This is either done by sampling the probability distribution of the policy,
