@@ -72,7 +72,7 @@ class BaseBuffer(ABC):
         self.extractor_state_example = ot.tree_map(
             lambda x: th.zeros((), dtype=x.dtype).expand_as(x), extractor_state_example, namespace=NS
         )
-        self.policy_is_recurrent = ~tree_empty(self.extractor_state_example)
+        self.policy_is_recurrent = not tree_empty(self.extractor_state_example)
 
         self.action_dim = get_action_dim(action_space)
         self.pos = 0
