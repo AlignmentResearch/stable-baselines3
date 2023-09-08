@@ -9,7 +9,7 @@ parameters:
   docker_img_version:
     # Docker image version for running tests.
     type: string
-    default: "566d240"
+    default: "113c2e9"
 
 commands:
   save-worker-test-results:
