@@ -104,7 +104,7 @@ class VecTransposeImage(VecEnvWrapper):
             if "terminal_observation" in infos[idx]:
                 infos[idx]["terminal_observation"] = self.transpose_observations(infos[idx]["terminal_observation"])
 
-        assert isinstance(observations, (np.ndarray, dict))
+        assert isinstance(observations, (th.Tensor, dict))
         return self.transpose_observations(observations), rewards, dones, infos
 
     def reset(self) -> Union[th.Tensor, Dict]:
@@ -112,7 +112,7 @@ class VecTransposeImage(VecEnvWrapper):
         Reset all environments
         """
         observations = self.venv.reset()
-        assert isinstance(observations, (np.ndarray, dict))
+        assert isinstance(observations, (th.Tensor, dict))
         return self.transpose_observations(observations)
 
     def close(self) -> None:
