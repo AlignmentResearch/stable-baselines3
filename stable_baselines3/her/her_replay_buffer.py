@@ -213,18 +213,19 @@ class HerReplayBuffer(DictReplayBuffer):
         # they correspond to is_valid[0, 0], is_valid[1, 0] and is_valid[1, 2]
         # or in numpy format ([rows], [columns]): (array([0, 1, 1]), array([0, 0, 2]))
         # Those indices are obtained back using np.unravel_index(valid_indices, is_valid.shape)
-        valid_indices = np.flatnonzero(is_valid.numpy())
+        valid_indices = th.nonzero(is_valid.flatten()).flatten()
         # Sample valid transitions that will constitute the minibatch of size batch_size
         index_randomness = th.randint(0, valid_indices.shape[0], (batch_size,))  # Sample with replacement
-        sampled_indices = valid_indices[index_randomness.numpy()]
+        sampled_indices = valid_indices[index_randomness]
         # Unravel the indexes, i.e. recover the batch and env indices.
         # Example: if sampled_indices = [0, 3, 5], then batch_indices = [0, 1, 1] and env_indices = [0, 0, 2]
-        batch_indices, env_indices = np.unravel_index(sampled_indices, is_valid.shape)
+        batch_indices = sampled_indices // is_valid.shape[1]
+        env_indices = sampled_indices % is_valid.shape[1]
 
         # Split the indexes between real and virtual transitions.
         nb_virtual = int(self.her_ratio * batch_size)
-        virtual_batch_indices, real_batch_indices = np.split(batch_indices, [nb_virtual])
-        virtual_env_indices, real_env_indices = np.split(env_indices, [nb_virtual])
+        virtual_batch_indices, real_batch_indices = batch_indices.split(nb_virtual)
+        virtual_env_indices, real_env_indices = env_indices.split(nb_virtual)
 
         # Get real and virtual data
         real_data = self._get_samples(th.from_numpy(real_batch_indices), th.from_numpy(real_env_indices), env)

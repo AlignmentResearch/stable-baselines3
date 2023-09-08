@@ -2,6 +2,7 @@ from typing import Tuple
 
 import torch as th
 
+
 class RunningMeanStd:
     def __init__(self, epsilon: float = 1e-4, shape: Tuple[int, ...] = ()):
         """
