@@ -2,7 +2,7 @@ import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from stable_baselines3.common.pytree_dataclass import tree_empty
+import optree as ot
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -11,6 +11,7 @@ from torch.nn import functional as F
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.pytree_dataclass import tree_empty
 from stable_baselines3.common.torch_layers import OutAndState
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, polyak_update
@@ -253,8 +254,8 @@ class DQN(OffPolicyAlgorithm):
             (used in recurrent policies)
         """
         if state is None:
-            state = self.initial_state(len(observation) if vectorized_env else None)
-            if len(tree_flatten(state)[0]) != 0:
+            state = self.initial_state()
+            if len(ot.tree_flatten(state)[0]) != 0:
                 raise ValueError("The state must be passed in when using recurrent policies.")
 
         observation = obs_as_tensor(observation, device=self.device)

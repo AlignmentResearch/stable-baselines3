@@ -355,7 +355,7 @@ class BasePolicy(BaseModel, ABC):
         observation, vectorized_env = self.obs_to_tensor(observation)
 
         if state is None:
-            state = self.initial_state(len(observation) if vectorized_env else None)
+            state = self.initial_state()
             if len(tree_flatten(state)[0]) != 0:
                 raise ValueError("The state must be passed in when using recurrent policies.")
 
