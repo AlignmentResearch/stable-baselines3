@@ -10,7 +10,6 @@ from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, T
 
 import gymnasium as gym
 import numpy as np
-from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -23,6 +22,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
+from stable_baselines3.common.pytree_dataclass import tree_empty
 from stable_baselines3.common.save_util import load_from_zip_file, recursive_getattr, recursive_setattr, save_to_zip_file
 from stable_baselines3.common.torch_layers import OutAndState
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, TensorDict

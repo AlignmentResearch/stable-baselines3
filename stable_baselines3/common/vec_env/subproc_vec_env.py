@@ -5,8 +5,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, U
 
 import gymnasium as gym
 import numpy as np
-from gymnasium import spaces
 import torch as th
+from gymnasium import spaces
 
 from stable_baselines3.common.vec_env.base_vec_env import (
     CloudpickleWrapper,
@@ -16,7 +16,7 @@ from stable_baselines3.common.vec_env.base_vec_env import (
     VecEnvStepReturn,
 )
 from stable_baselines3.common.vec_env.patch_gym import _patch_env
-from stable_baselines3.common.vec_env.util import obs_as_tensor, obs_as_np
+from stable_baselines3.common.vec_env.util import obs_as_np, obs_as_tensor
 
 
 def _worker(
@@ -136,7 +136,12 @@ class SubprocVecEnv(VecEnv):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, rews, dones, infos, self.reset_infos = zip(*results)
-        return _flatten_obs(obs, self.observation_space), th.as_tensor(rews, dtype=th.float32), th.as_tensor(dones, dtype=th.bool), infos
+        return (
+            _flatten_obs(obs, self.observation_space),
+            th.as_tensor(rews, dtype=th.float32),
+            th.as_tensor(dones, dtype=th.bool),
+            infos,
+        )
 
     def reset(self) -> VecEnvObs:
         for env_idx, remote in enumerate(self.remotes):

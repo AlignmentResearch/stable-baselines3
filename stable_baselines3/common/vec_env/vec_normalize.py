@@ -3,8 +3,8 @@ import pickle
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-from gymnasium import spaces
 import torch as th
+from gymnasium import spaces
 
 from stable_baselines3.common import utils
 from stable_baselines3.common.preprocessing import is_image_space

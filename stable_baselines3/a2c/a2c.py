@@ -1,13 +1,13 @@
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import optree as ot
-from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.pytree_dataclass import tree_empty
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import explained_variance
 

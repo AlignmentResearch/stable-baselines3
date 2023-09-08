@@ -3,9 +3,9 @@ from typing import Dict, Optional
 import gymnasium as gym
 import numpy as np
 import pytest
-from tests.test_train_eval_mode import OutAndState
 import torch as th
 from gymnasium import spaces
+from tests.test_train_eval_mode import OutAndState
 
 from stable_baselines3 import A2C, PPO, SAC
 from stable_baselines3.common.callbacks import BaseCallback
@@ -179,7 +179,11 @@ def test_infinite_horizon(model_class, handle_timeout_termination):
     if model_class == A2C:
         value = model.policy.predict_values(obs_tensor, model.policy.initial_state()).out.item()
     else:
-        value = model.critic(obs_tensor, model.actor(obs_tensor, model.actor.initial_state()).out, model.critic.initial_state()).out[0].item()
+        value = (
+            model.critic(obs_tensor, model.actor(obs_tensor, model.actor.initial_state()).out, model.critic.initial_state())
+            .out[0]
+            .item()
+        )
     # True value (geometric series with a reward of one at each step)
     infinite_horizon_value = 1 / (1 - gamma)
 

@@ -3,7 +3,6 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import optree as ot
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 
@@ -11,6 +10,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 from stable_baselines3.common.vec_env import VecEnv
@@ -129,7 +129,6 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             n_envs=self.n_envs,
         )
 
-
     def collect_rollouts(
         self,
         env: VecEnv,
@@ -189,7 +188,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 else:
                     # Otherwise, clip the actions to avoid out of bound error
                     # as we are sampling from an unbounded Gaussian distribution
-                    clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
+                    clipped_actions = th.clip(
+                        actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high)
+                    )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -217,7 +218,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 ):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
-                        terminal_recurrent_state = ot.tree_map(lambda x: x[:, idx : idx + 1, :].contiguous(), recurrent_states, namespace=OT_NAMESPACE)
+                        terminal_recurrent_state = ot.tree_map(
+                            lambda x: x[:, idx : idx + 1, :].contiguous(), recurrent_states, namespace=OT_NAMESPACE
+                        )
                         episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
                         terminal_value_and_state = self.policy.predict_values(terminal_obs, terminal_recurrent_state)
                         terminal_value = terminal_value_and_state.out.squeeze()

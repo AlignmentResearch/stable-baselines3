@@ -5,12 +5,12 @@ from typing import Any, Callable, Dict, Generic, List, NamedTuple, Optional, Pro
 
 import gymnasium as gym
 import numpy as np
-from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
+import optree as ot
 import torch as th
 from optree import PyTree
-import optree as ot
 
 from stable_baselines3.common import callbacks, vec_env
+from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 
 GymEnv = Union[gym.Env, vec_env.VecEnv]
 GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
@@ -31,6 +31,7 @@ Schedule = Callable[[float], float]
 EMPTY_PYTREE: PyTree[th.Tensor] = ()  # type: ignore[assignment]
 
 T = TypeVar("T")
+
 
 @dataclass_frozen_pytree
 class OutAndState(Generic[T]):
@@ -137,6 +138,7 @@ class PolicyPredictor(Protocol):
         :param n_envs: Batch dimension of the recurrent state. If None, states are not batched.
         :return: the initial recurrent states
         """
+
 
 def unwrap(x: Optional[T]) -> T:
     if x is None:

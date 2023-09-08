@@ -205,7 +205,9 @@ class DQN(OffPolicyAlgorithm):
 
             with th.no_grad():
                 # Compute the next Q-values using the target network
-                next_q_values = self.q_net_target(replay_data.next_observations, recurrent_states).discard_state(self._state_err)
+                next_q_values = self.q_net_target(replay_data.next_observations, recurrent_states).discard_state(
+                    self._state_err
+                )
                 # Follow greedy policy: use the one with the highest value
                 next_q_values, _ = next_q_values.max(dim=1)
                 # Avoid potential broadcast issue
@@ -275,7 +277,9 @@ class DQN(OffPolicyAlgorithm):
                 preds = OutAndState(action, state)
             else:
                 # Run the policy anyways, so it processes the current observation and outputs the recurrent state.
-                next_state = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
+                next_state = self.policy.predict(
+                    observation, state=state, episode_start=episode_start, deterministic=deterministic
+                )
                 preds = OutAndState(action, next_state.state)
         else:
             preds = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)

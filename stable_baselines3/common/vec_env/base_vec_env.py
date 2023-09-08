@@ -1,4 +1,5 @@
 import inspect
+import math
 import warnings
 from abc import ABC, abstractmethod, abstractproperty
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, Union
@@ -6,9 +7,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, U
 import cloudpickle
 import gymnasium as gym
 import numpy as np
-from gymnasium import spaces
 import torch as th
-import math
+from gymnasium import spaces
 
 # Define type aliases here to avoid circular import
 # Used when we want to access one or more VecEnv

@@ -8,13 +8,12 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from stable_baselines3.common import pytree_dataclass
-from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 import torch as th
 from gymnasium import spaces
-from torch import nn
 from optree import PyTree, tree_flatten
+from torch import nn
 
+from stable_baselines3.common import pytree_dataclass
 from stable_baselines3.common.distributions import (
     BernoulliDistribution,
     CategoricalDistribution,
@@ -25,14 +24,15 @@ from stable_baselines3.common.distributions import (
     make_proba_distribution,
 )
 from stable_baselines3.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
+from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
-    OutAndState,
     ExtractorOutput,
     FlattenExtractor,
     MlpExtractor,
     NatureCNN,
+    OutAndState,
     create_mlp,
 )
 from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
@@ -124,7 +124,9 @@ class BaseModel(nn.Module):
         """Helper method to create a features extractor."""
         return self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
 
-    def extract_features(self, obs: TorchGymObs, recurrent_state: PyTree, features_extractor: BaseFeaturesExtractor) -> ExtractorOutput:
+    def extract_features(
+        self, obs: TorchGymObs, recurrent_state: PyTree, features_extractor: BaseFeaturesExtractor
+    ) -> ExtractorOutput:
         """
         Preprocess the observation if needed and extract features.
 
@@ -403,11 +405,14 @@ class BasePolicy(BaseModel, ABC):
 
 
 if TYPE_CHECKING:
+
     @dataclass_frozen_pytree
     class PolicyValueExtractorState(PyTree[th.Tensor]):
         pi_state: PyTree[th.Tensor]
         vf_state: PyTree[th.Tensor]
+
 else:
+
     @dataclass_frozen_pytree
     class PolicyValueExtractorState:
         pi_state: PyTree[th.Tensor]
@@ -567,7 +572,10 @@ class ActorCriticPolicy(BasePolicy):
         if self.share_features_extractor:
             return self.features_extractor.initial_state(n_envs)
         else:
-            return PolicyValueExtractorState(pi_state=self.pi_features_extractor.initial_state(n_envs), vf_state=self.vf_features_extractor.initial_state(n_envs))
+            return PolicyValueExtractorState(
+                pi_state=self.pi_features_extractor.initial_state(n_envs),
+                vf_state=self.vf_features_extractor.initial_state(n_envs),
+            )
 
     def reset_noise(self, n_envs: int = 1) -> None:
         """
@@ -644,7 +652,9 @@ class ActorCriticPolicy(BasePolicy):
         # Setup optimizer with initial learning rate
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
 
-    def forward(self, obs: TorchGymObs, recurrent_state: PyTree[th.Tensor], deterministic: bool = False) -> OutAndState[Tuple[th.Tensor, th.Tensor, th.Tensor]]:
+    def forward(
+        self, obs: TorchGymObs, recurrent_state: PyTree[th.Tensor], deterministic: bool = False
+    ) -> OutAndState[Tuple[th.Tensor, th.Tensor, th.Tensor]]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -722,7 +732,10 @@ class ActorCriticPolicy(BasePolicy):
         return OutAndState(dist.out.get_actions(deterministic=deterministic), dist.state)
 
     def evaluate_actions(
-        self, obs: TorchGymObs, actions: th.Tensor, recurrent_states: PyTree[th.Tensor],
+        self,
+        obs: TorchGymObs,
+        actions: th.Tensor,
+        recurrent_states: PyTree[th.Tensor],
     ) -> OutAndState[Tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]]:
         """
         Evaluate actions according to the current policy,

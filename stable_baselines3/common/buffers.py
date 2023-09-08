@@ -9,7 +9,8 @@ from gymnasium import spaces
 from optree import PyTree
 
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS, tree_empty
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
+from stable_baselines3.common.pytree_dataclass import tree_empty
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     DictRolloutBufferSamples,
@@ -31,6 +32,8 @@ except ImportError:
 TPyTree = TypeVar("TPyTree", bound=PyTree[th.Tensor])
 
 PyTreeGeneric = TypeVar("PyTreeGeneric", bound=PyTree)
+
+
 def index_into_pytree(
     idx: Any,
     tree: PyTreeGeneric,
@@ -394,7 +397,9 @@ class ReplayBuffer(BaseBuffer):
     def _get_samples(self, batch_inds: Union[slice, th.Tensor], env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
-            batch_inds = th.arange(batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device)
+            batch_inds = th.arange(
+                batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device
+            )
         env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
         if self.policy_is_recurrent:
             raise NotImplementedError("Replay buffer doesn't know how to return time-contiguous samples (see above lines).")
@@ -813,7 +818,9 @@ class DictReplayBuffer(ReplayBuffer):
     ) -> DictReplayBufferSamples:
         # Sample randomly the env idx
         if isinstance(batch_inds, slice):
-            batch_inds = th.arange(batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device)
+            batch_inds = th.arange(
+                batch_inds.start or 0, batch_inds.stop or self.buffer_size, batch_inds.step or 1, device=self.buffer_device
+            )
         if env_inds is None:
             env_inds = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 

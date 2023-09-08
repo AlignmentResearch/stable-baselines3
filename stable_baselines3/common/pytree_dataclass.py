@@ -8,6 +8,7 @@ __all__ = ["register_dataclass_as_pytree", "dataclass_frozen_pytree", "tree_empt
 
 OT_NAMESPACE = "stable-baselines3"
 
+
 def register_dataclass_as_pytree(Cls, whitelist: Optional[Sequence[str]] = None):
     """Register a dataclass as a pytree, using the given whitelist of field names.
 
@@ -38,6 +39,7 @@ def dataclass_frozen_pytree(Cls: Type, **kwargs) -> Type[ot.PyTree]:
     dataCls = dataclasses.dataclass(frozen=True, slots=True, **kwargs)(Cls)
     register_dataclass_as_pytree(dataCls)
     return dataCls
+
 
 def tree_empty(tree: ot.PyTree) -> bool:
     flattened_state, _ = ot.tree_flatten(tree, namespace=OT_NAMESPACE)

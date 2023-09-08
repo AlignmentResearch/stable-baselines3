@@ -4,12 +4,12 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import optree as ot
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
 
 from stable_baselines3.common.buffers import DictReplayBuffer, index_into_pytree
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples, TensorDict
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy

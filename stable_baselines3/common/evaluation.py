@@ -85,7 +85,9 @@ def evaluate_policy(
         device = observations.device
     episode_counts = torch.zeros(n_envs, dtype=torch.int64, device=device)
     # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = torch.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=torch.int64, device=device)
+    episode_count_targets = torch.tensor(
+        [(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=torch.int64, device=device
+    )
 
     current_rewards = torch.zeros(n_envs, dtype=torch.float32, device=device)
     current_lengths = torch.zeros(n_envs, dtype=torch.int64, device=device)

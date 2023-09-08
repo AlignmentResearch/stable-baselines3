@@ -2,8 +2,8 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 import torch as th
 from gymnasium import spaces
-from torch import nn
 from optree import PyTree
+from torch import nn
 
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic, OutAndState, PolicyValueExtractorState
 from stable_baselines3.common.preprocessing import get_action_dim

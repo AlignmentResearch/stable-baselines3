@@ -2,13 +2,13 @@ import gymnasium as gym
 import numpy as np
 import optree as ot
 import pytest
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
 
 from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples, ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
@@ -150,9 +150,11 @@ def test_device_buffer(replay_buffer_cls, device):
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type
+
     def _check_data_device(data):
         def _assert_device(value):
             assert value.device.type == desired_device
+
         ot.tree_map(_assert_device, data, namespace=OT_NAMESPACE)
 
     # Get data from the buffer

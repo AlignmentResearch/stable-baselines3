@@ -1,8 +1,8 @@
 import gymnasium as gym
 import numpy as np
 import pytest
-from gymnasium import spaces
 import torch as th
+from gymnasium import spaces
 
 from stable_baselines3.common.vec_env import DummyVecEnv, VecCheckNan
 
@@ -41,7 +41,7 @@ def test_check_nan():
     env = DummyVecEnv([NanAndInfEnv])
     env = VecCheckNan(env, raise_exception=True)
 
-    env.step(th.tensor([[0.]]))
+    env.step(th.tensor([[0.0]]))
 
     with pytest.raises(ValueError):
         env.step(th.tensor([[float("NaN")]]))
@@ -50,11 +50,11 @@ def test_check_nan():
         env.step(th.tensor([[float("inf")]]))
 
     with pytest.raises(ValueError):
-        env.step(th.tensor([[-1.]]))
+        env.step(th.tensor([[-1.0]]))
 
     with pytest.raises(ValueError):
-        env.step(th.tensor([[1.]]))
+        env.step(th.tensor([[1.0]]))
 
-    env.step(th.tensor([[0., 1.], [0., 1.]]))
+    env.step(th.tensor([[0.0, 1.0], [0.0, 1.0]]))
 
     env.reset()

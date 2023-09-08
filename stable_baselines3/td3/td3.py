@@ -1,7 +1,6 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from stable_baselines3.common.pytree_dataclass import tree_empty
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
@@ -10,6 +9,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
+from stable_baselines3.common.pytree_dataclass import tree_empty
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, unwrap
 from stable_baselines3.common.utils import get_parameters_by_name, polyak_update
 from stable_baselines3.td3.policies import Actor, CnnPolicy, MlpPolicy, MultiInputPolicy, TD3Policy
@@ -175,15 +175,24 @@ class TD3(OffPolicyAlgorithm):
                 # Select action according to policy and add clipped noise
                 noise = replay_data.actions.clone().data.normal_(0, self.target_policy_noise)
                 noise = noise.clamp(-self.target_noise_clip, self.target_noise_clip)
-                next_actions = (self.actor_target(replay_data.next_observations, recurrent_state).discard_state(self._not_impl) + noise).clamp(-1, 1)
+                next_actions = (
+                    self.actor_target(replay_data.next_observations, recurrent_state).discard_state(self._not_impl) + noise
+                ).clamp(-1, 1)
 
                 # Compute the next Q-values: min over all critics targets
-                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions, recurrent_state).discard_state(self._not_impl), dim=1)
+                next_q_values = th.cat(
+                    self.critic_target(replay_data.next_observations, next_actions, recurrent_state).discard_state(
+                        self._not_impl
+                    ),
+                    dim=1,
+                )
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
             # Get current Q-values estimates for each critic network
-            current_q_values = self.critic(replay_data.observations, replay_data.actions, recurrent_state).discard_state(self._not_impl)
+            current_q_values = self.critic(replay_data.observations, replay_data.actions, recurrent_state).discard_state(
+                self._not_impl
+            )
 
             # Compute critic loss
             critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
@@ -198,7 +207,11 @@ class TD3(OffPolicyAlgorithm):
             # Delayed policy updates
             if self._n_updates % self.policy_delay == 0:
                 # Compute actor loss
-                actor_loss_with_state = self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations, recurrent_state).discard_state(self._not_impl), recurrent_state=replay_data.recurrent_states)
+                actor_loss_with_state = self.critic.q1_forward(
+                    replay_data.observations,
+                    self.actor(replay_data.observations, recurrent_state).discard_state(self._not_impl),
+                    recurrent_state=replay_data.recurrent_states,
+                )
                 actor_loss = -actor_loss_with_state.out.mean()
                 actor_losses.append(actor_loss.item())
 

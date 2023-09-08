@@ -366,9 +366,7 @@ class SACPolicy(BasePolicy):
     def forward(self, obs: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         return self._predict(obs, recurrent_state, deterministic=deterministic)
 
-    def _predict(
-        self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False
-    ) -> OutAndState[th.Tensor]:
+    def _predict(self, observation: th.Tensor, recurrent_state: PyTree, deterministic: bool = False) -> OutAndState[th.Tensor]:
         if self.share_features_extractor:
             return self.actor(observation, recurrent_state, deterministic=deterministic)
 

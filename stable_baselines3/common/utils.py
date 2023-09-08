@@ -24,6 +24,7 @@ except ImportError:
 from stable_baselines3.common.logger import Logger, configure
 from stable_baselines3.common.type_aliases import GymEnv, Schedule, TensorDict, TrainFreq, TrainFrequencyUnit
 
+
 def nbytes(t: th.Tensor) -> int:
     """
     Get the number of bytes of a PyTorch tensor.
@@ -32,6 +33,7 @@ def nbytes(t: th.Tensor) -> int:
     :return: the number of bytes of the tensor
     """
     return t.element_size() * t.numel()
+
 
 def set_random_seed(seed: int, using_cuda: bool = False) -> None:
     """
@@ -54,7 +56,7 @@ def set_random_seed(seed: int, using_cuda: bool = False) -> None:
 
 
 # From stable baselines
-def explained_variance(y_pred: th.Tensor, y_true: th.Tensor, unbiased: bool=True) -> th.Tensor:
+def explained_variance(y_pred: th.Tensor, y_true: th.Tensor, unbiased: bool = True) -> th.Tensor:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -481,7 +483,9 @@ def polyak_update(
             th.add(target_param.data, param.data, alpha=tau, out=target_param.data)
 
 
-def obs_as_tensor(obs: Union[th.Tensor, np.ndarray, Dict[str, th.Tensor], Dict[str, np.ndarray]], device: th.device) -> Union[th.Tensor, TensorDict]:
+def obs_as_tensor(
+    obs: Union[th.Tensor, np.ndarray, Dict[str, th.Tensor], Dict[str, np.ndarray]], device: th.device
+) -> Union[th.Tensor, TensorDict]:
     """
     Moves the observation to the given device.
 

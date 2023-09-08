@@ -1,18 +1,17 @@
 from typing import Callable, Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union, cast
 
 import gymnasium as gym
-from stable_baselines3.common.buffers import index_into_pytree
+import optree as ot
 import torch as th
 from gymnasium import spaces
-from torch import nn
 from optree import PyTree
-import optree as ot
+from torch import nn
 
+from stable_baselines3.common.buffers import index_into_pytree
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
-from stable_baselines3.common.type_aliases import TensorDict, OutAndState, EMPTY_PYTREE
-from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE, dataclass_frozen_pytree
-
+from stable_baselines3.common.type_aliases import EMPTY_PYTREE, OutAndState, TensorDict
+from stable_baselines3.common.utils import get_device
 
 T = TypeVar("T")
 

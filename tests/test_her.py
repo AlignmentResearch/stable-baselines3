@@ -356,7 +356,8 @@ def test_truncate_last_trajectory(n_envs, recwarn, n_steps, handle_timeout_termi
     for _ in range(n_steps):
         actions = np.random.rand(n_envs, n_bits)
         next_observations, rewards, dones, infos = venv.step(actions)
-        replay_buffer.add(observations, next_observations, actions, rewards, dones, infos, recurrent_states={"a": {"m": th.rand((n_envs, 3,))}})
+        recurrent_states = {"a": {"m": th.rand((n_envs, 3))}}
+        replay_buffer.add(observations, next_observations, actions, rewards, dones, infos, recurrent_states)
         observations = next_observations
 
     old_replay_buffer = deepcopy(replay_buffer)
@@ -401,7 +402,8 @@ def test_truncate_last_trajectory(n_envs, recwarn, n_steps, handle_timeout_termi
     for _ in range(10):
         actions = np.random.rand(n_envs, n_bits)
         next_observations, rewards, dones, infos = venv.step(actions)
-        replay_buffer.add(observations, next_observations, actions, rewards, dones, infos, recurrent_states={"a": {"m": th.rand((n_envs, 3,))}})
+        recurrent_states = {"a": {"m": th.rand((n_envs, 3))}}
+        replay_buffer.add(observations, next_observations, actions, rewards, dones, infos, recurrent_states)
         observations = next_observations
 
     # old oberservations must remain unchanged
@@ -423,7 +425,9 @@ def test_truncate_last_trajectory(n_envs, recwarn, n_steps, handle_timeout_termi
     assert not np.allclose(old_replay_buffer.actions[pos:end_pos], replay_buffer.actions[pos:end_pos])
     assert not np.allclose(old_replay_buffer.rewards[pos:end_pos], replay_buffer.rewards[pos:end_pos])
     assert not np.allclose(old_replay_buffer.dones[pos - 1 : end_pos], replay_buffer.dones[pos - 1 : end_pos])
-    assert not np.allclose(old_replay_buffer.recurrent_states["a"]["m"][pos:end_pos], replay_buffer.recurrent_states["a"]["m"][pos:end_pos])
+    assert not np.allclose(
+        old_replay_buffer.recurrent_states["a"]["m"][pos:end_pos], replay_buffer.recurrent_states["a"]["m"][pos:end_pos]
+    )
 
     # all entries with index >= replay_buffer.pos must remain unchanged
     for key in ["observation", "desired_goal", "achieved_goal"]:
@@ -432,7 +436,9 @@ def test_truncate_last_trajectory(n_envs, recwarn, n_steps, handle_timeout_termi
     assert np.allclose(old_replay_buffer.actions[end_pos:], replay_buffer.actions[end_pos:])
     assert np.allclose(old_replay_buffer.rewards[end_pos:], replay_buffer.rewards[end_pos:])
     assert np.allclose(old_replay_buffer.dones[end_pos:], replay_buffer.dones[end_pos:])
-    assert np.allclose(old_replay_buffer.recurrent_states["a"]["m"][end_pos:], replay_buffer.recurrent_states["a"]["m"][end_pos:])
+    assert np.allclose(
+        old_replay_buffer.recurrent_states["a"]["m"][end_pos:], replay_buffer.recurrent_states["a"]["m"][end_pos:]
+    )
 
 
 @pytest.mark.parametrize("n_bits", [10])

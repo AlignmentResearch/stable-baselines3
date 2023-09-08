@@ -7,19 +7,28 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from optree import PyTree
 import optree as ot
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 import torch as th
 from gymnasium import spaces
+from optree import PyTree
 
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.buffers import DictReplayBuffer, ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, OutAndState, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit, unwrap
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    OutAndState,
+    RolloutReturn,
+    Schedule,
+    TrainFreq,
+    TrainFrequencyUnit,
+    unwrap,
+)
 from stable_baselines3.common.utils import safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
@@ -554,7 +563,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
-            a_and_policy_state = self._sample_action(learning_starts, self._last_recurrent_states, action_noise=action_noise, n_envs=env.num_envs)
+            a_and_policy_state = self._sample_action(
+                learning_starts, self._last_recurrent_states, action_noise=action_noise, n_envs=env.num_envs
+            )
             actions, buffer_actions = a_and_policy_state.out
             self._last_recurrent_states = a_and_policy_state.state
 
@@ -574,7 +585,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self._update_info_buffer(infos, dones)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
-            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos, recurrent_states=self._last_recurrent_states)
+            self._store_transition(
+                replay_buffer, buffer_actions, new_obs, rewards, dones, infos, recurrent_states=self._last_recurrent_states
+            )
 
             self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 

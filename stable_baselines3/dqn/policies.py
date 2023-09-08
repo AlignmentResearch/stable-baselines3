@@ -182,10 +182,14 @@ class DQNPolicy(BasePolicy):
     def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
         return self.q_net.initial_state(n_envs)
 
-    def forward(self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
+    def forward(
+        self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True
+    ) -> OutAndState[th.Tensor]:
         return self._predict(obs, recurrent_state, deterministic=deterministic)
 
-    def _predict(self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True) -> OutAndState[th.Tensor]:
+    def _predict(
+        self, obs: th.Tensor, recurrent_state: PyTree[th.Tensor], deterministic: bool = True
+    ) -> OutAndState[th.Tensor]:
         return self.q_net._predict(obs, recurrent_state, deterministic=deterministic)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
