@@ -252,6 +252,11 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
+        if state is None:
+            state = self.initial_state(len(observation) if vectorized_env else None)
+            if len(tree_flatten(state)[0]) != 0:
+                raise ValueError("The state must be passed in when using recurrent policies.")
+
         observation = obs_as_tensor(observation, device=self.device)
         if not deterministic and th.rand(()) < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
