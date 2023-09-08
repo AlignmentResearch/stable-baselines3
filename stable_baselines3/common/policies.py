@@ -408,8 +408,6 @@ class PolicyValueExtractorState(PyTree(th.Tensor)):
     vf_state: PyTree[th.Tensor]
 
     def __init__(self, pi_state: PyTree[th.Tensor], vf_state: PyTree[th.Tensor]):
-        if isinstance(pi_state, PolicyValueExtractorState) and isinstance(vf_state, PolicyValueExtractorState):
-            import pdb; pdb.set_trace()
         object.__setattr__(self, "pi_state", pi_state)
         object.__setattr__(self, "vf_state", vf_state)
 
