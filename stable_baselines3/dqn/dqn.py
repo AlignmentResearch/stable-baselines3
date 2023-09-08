@@ -252,21 +252,24 @@ class DQN(OffPolicyAlgorithm):
         :return: the model's action and the next state
             (used in recurrent policies)
         """
-        obs_ = obs_as_tensor(observation, device=self.device)
-        assert not isinstance(obs_, tuple)
-        observation = obs_
-        preds = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
-
+        observation = obs_as_tensor(observation, device=self.device)
         if not deterministic and th.rand(()) < self.exploration_rate:
             if self.policy.is_vectorized_observation(observation):
                 if isinstance(observation, dict):
-                    n_batch = observation[next(iter(observation.keys()))].shape[0]
-                else:
+                    n_batch = next(iter(observation.values())).shape[0]
+                elif isinstance(observation, th.Tensor):
                     n_batch = observation.shape[0]
+                else:
+                    raise NotImplementedError(f"Unsupported observation type: {type(observation)}")
                 action = th.stack([th.as_tensor(self.action_space.sample()) for _ in range(n_batch)], dim=0)
             else:
                 action = th.as_tensor(self.action_space.sample())
-            preds = OutAndState(action, preds.state)
+            if not tree_empty(unwrap(preds.state)):
+                # Run the policy anyways, so it processes the current observation and outputs the recurrent state.
+                next_state = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
+            preds = OutAndState(action, next_state.state)
+        else:
+            preds = self.policy.predict(observation, state=state, episode_start=episode_start, deterministic=deterministic)
         return preds
 
     def learn(
