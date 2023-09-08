@@ -1,11 +1,11 @@
 from collections import OrderedDict
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import numpy as np
 from gymnasium import Env, spaces
 from gymnasium.envs.registration import EnvSpec
 
-from stable_baselines3.common.type_aliases import GymStepReturn
+from stable_baselines3.common.type_aliases import GymObs, GymStepReturn
 
 
 class BitFlippingEnv(Env):
@@ -185,7 +185,7 @@ class BitFlippingEnv(Env):
         # Episode terminate when we reached the goal or the max number of steps
         info = {"is_success": terminated}
         truncated = self.current_step >= self.max_steps
-        return obs, reward, terminated, truncated, info
+        return cast(GymObs, obs), reward, terminated, truncated, info
 
     def compute_reward(
         self, achieved_goal: Union[int, np.ndarray], desired_goal: Union[int, np.ndarray], _info: Optional[Dict[str, Any]]

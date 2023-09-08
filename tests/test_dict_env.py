@@ -11,6 +11,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import BitFlippingEnv, SimpleMultiObsEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecNormalize
+from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 
 class DummyDictEnv(gym.Env):
@@ -121,6 +122,7 @@ def test_consistency(model_class):
     env = gym.wrappers.FlattenObservation(dict_env)
     dict_env.seed(10)
     obs, _ = dict_env.reset()
+    obs = obs_as_tensor(obs)
 
     kwargs = {}
     n_steps = 256

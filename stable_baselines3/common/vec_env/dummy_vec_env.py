@@ -1,14 +1,15 @@
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, cast
 
 import gymnasium as gym
 import numpy as np
+import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs, VecEnvStepReturn
 from stable_baselines3.common.vec_env.patch_gym import _patch_env
-from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info
+from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info, obs_as_tensor, obs_as_np
 
 
 class DummyVecEnv(VecEnv):
@@ -24,7 +25,7 @@ class DummyVecEnv(VecEnv):
     :raises ValueError: If the same environment instance is passed as the output of two or more different env_fn.
     """
 
-    actions: np.ndarray
+    actions: th.Tensor
 
     def __init__(self, env_fns: List[Callable[[], gym.Env]]):
         self.envs = [_patch_env(fn()) for fn in env_fns]
@@ -43,21 +44,23 @@ class DummyVecEnv(VecEnv):
         obs_space = env.observation_space
         self.keys, shapes, dtypes = obs_space_info(obs_space)
 
-        self.buf_obs = OrderedDict([(k, np.zeros((self.num_envs, *tuple(shapes[k])), dtype=dtypes[k])) for k in self.keys])
-        self.buf_dones = np.zeros((self.num_envs,), dtype=bool)
-        self.buf_rews = np.zeros((self.num_envs,), dtype=np.float32)
+        self.buf_obs = OrderedDict([(k, th.zeros((self.num_envs, *tuple(shapes[k])), dtype=dtypes[k])) for k in self.keys])
+        self.buf_dones = th.zeros((self.num_envs,), dtype=th.bool)
+        self.buf_rews = th.zeros((self.num_envs,), dtype=th.float32)
         self.buf_infos: List[Dict[str, Any]] = [{} for _ in range(self.num_envs)]
         self.metadata = env.metadata
 
-    def step_async(self, actions: np.ndarray) -> None:
+    def step_async(self, actions: th.Tensor) -> None:
         self.actions = actions
 
     def step_wait(self) -> VecEnvStepReturn:
         # Avoid circular imports
         for env_idx in range(self.num_envs):
-            obs, self.buf_rews[env_idx], terminated, truncated, self.buf_infos[env_idx] = self.envs[env_idx].step(
-                self.actions[env_idx]
+            obs, reward, terminated, truncated, self.buf_infos[env_idx] = self.envs[env_idx].step(
+                obs_as_np(self.actions[env_idx], space=self.envs[env_idx].action_space)
             )
+            obs = obs_as_tensor(obs)
+            self.buf_rews[env_idx] = float(reward)
             # convert to SB3 VecEnv api
             self.buf_dones[env_idx] = terminated or truncated
             # See https://github.com/openai/gym/issues/3102
@@ -68,12 +71,14 @@ class DummyVecEnv(VecEnv):
                 # save final observation where user can get it, then reset
                 self.buf_infos[env_idx]["terminal_observation"] = obs
                 obs, self.reset_infos[env_idx] = self.envs[env_idx].reset()
+                obs = obs_as_tensor(obs)
             self._save_obs(env_idx, obs)
-        return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones), deepcopy(self.buf_infos))
+        return (self._obs_from_buf(), self.buf_rews.clone(), self.buf_dones.clone(), deepcopy(self.buf_infos))
 
     def reset(self) -> VecEnvObs:
         for env_idx in range(self.num_envs):
             obs, self.reset_infos[env_idx] = self.envs[env_idx].reset(seed=self._seeds[env_idx])
+            obs = obs_as_tensor(obs)
             self._save_obs(env_idx, obs)
         # Seeds are only used once
         self._reset_seeds()
@@ -83,15 +88,15 @@ class DummyVecEnv(VecEnv):
         for env in self.envs:
             env.close()
 
-    def get_images(self) -> Sequence[Optional[np.ndarray]]:
+    def get_images(self) -> Sequence[Optional[th.Tensor]]:
         if self.render_mode != "rgb_array":
             warnings.warn(
                 f"The render mode is {self.render_mode}, but this method assumes it is `rgb_array` to obtain images."
             )
             return [None for _ in self.envs]
-        return [env.render() for env in self.envs]  # type: ignore[misc]
+        return cast(Sequence[th.Tensor], th.stack([th.as_tensor(env.render()) for env in self.envs]))
 
-    def render(self, mode: Optional[str] = None) -> Optional[np.ndarray]:
+    def render(self, mode: Optional[str] = None) -> Optional[th.Tensor]:
         """
         Gym environment rendering. If there are multiple environments then
         they are tiled together in one image via ``BaseVecEnv.render()``.
@@ -103,8 +108,10 @@ class DummyVecEnv(VecEnv):
     def _save_obs(self, env_idx: int, obs: VecEnvObs) -> None:
         for key in self.keys:
             if key is None:
+                assert isinstance(obs, th.Tensor)
                 self.buf_obs[key][env_idx] = obs
             else:
+                assert isinstance(obs, (dict, tuple))
                 self.buf_obs[key][env_idx] = obs[key]  # type: ignore[call-overload]
 
     def _obs_from_buf(self) -> VecEnvObs:

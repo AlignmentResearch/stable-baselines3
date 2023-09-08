@@ -4,6 +4,7 @@ from typing import Any, Dict, Union
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space_channels_first
 from stable_baselines3.common.vec_env import DummyVecEnv, VecCheckNan
@@ -112,7 +113,7 @@ def _check_nan(env: gym.Env) -> None:
     vec_env = VecCheckNan(DummyVecEnv([lambda: env]))
     vec_env.reset()
     for _ in range(10):
-        action = np.array([env.action_space.sample()])
+        action = th.as_tensor(env.action_space.sample()).unsqueeze(dim=0)
         _, _, _, _ = vec_env.step(action)
 
 

@@ -8,6 +8,7 @@ from typing import Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+import torch as th
 import pytest
 from gymnasium import spaces
 
@@ -51,7 +52,7 @@ class CustomGymEnv(gym.Env):
 
     def render(self):
         if self.render_mode == "rgb_array":
-            return np.zeros((4, 4, 3))
+            return th.zeros((4, 4, 3))
 
     def seed(self, seed=None):
         if seed is not None:
@@ -66,9 +67,9 @@ class CustomGymEnv(gym.Env):
 
         :param dim_0: (int)
         :param dim_1: (int)
-        :return: (np.ndarray)
+        :return: (th.ndarray)
         """
-        return np.ones((dim_0, dim_1))
+        return th.ones((dim_0, dim_1))
 
 
 def test_vecenv_func_checker():
@@ -104,7 +105,7 @@ def test_vecenv_custom_calls(vec_env_class, vec_env_wrapper):
     array_explicit_mode = vec_env.render(mode="rgb_array")
     # test render without argument (new gym API style)
     array_implicit_mode = vec_env.render()
-    assert np.array_equal(array_implicit_mode, array_explicit_mode)
+    assert th.equal(array_implicit_mode, array_explicit_mode)
 
     # test warning if you try different render mode
     with pytest.warns(UserWarning):
@@ -126,14 +127,14 @@ def test_vecenv_custom_calls(vec_env_class, vec_env_wrapper):
     assert len(getattr_results) == N_ENVS
 
     for env_idx in range(N_ENVS):
-        assert (env_method_results[env_idx] == np.ones((1, 2))).all()
+        assert (env_method_results[env_idx] == th.ones((1, 2))).all()
         assert setattr_results[env_idx] is None
         assert getattr_results[env_idx] == env_idx
 
     # Call env_method on a subset of the VecEnv
     env_method_subset = vec_env.env_method("custom_method", 1, indices=[0, 2], dim_1=3)
-    assert (env_method_subset[0] == np.ones((1, 3))).all()
-    assert (env_method_subset[1] == np.ones((1, 3))).all()
+    assert (env_method_subset[0] == th.ones((1, 3))).all()
+    assert (env_method_subset[1] == th.ones((1, 3))).all()
     assert len(env_method_subset) == 2
 
     # Test to change value for all the environments
@@ -168,7 +169,7 @@ class StepEnv(gym.Env):
         """Gym environment for testing that terminal observation is inserted
         correctly."""
         self.action_space = spaces.Discrete(2)
-        self.observation_space = spaces.Box(np.array([0]), np.array([999]), dtype="int")
+        self.observation_space = spaces.Box(np.array([0]), np.array([999]), dtype=int)
         self.max_steps = max_steps
         self.current_step = 0
 
@@ -198,7 +199,7 @@ def test_vecenv_terminal_obs(vec_env_class, vec_env_wrapper):
         else:
             vec_env = vec_env_wrapper(vec_env)
 
-    zero_acts = np.zeros((N_ENVS,), dtype="int")
+    zero_acts = th.zeros((N_ENVS,), dtype=int)
     prev_obs_b = vec_env.reset()
     for step_num in range(1, max(step_nums) + 1):
         obs_b, _, done_b, info_b = vec_env.step(zero_acts)
@@ -215,14 +216,14 @@ def test_vecenv_terminal_obs(vec_env_class, vec_env_wrapper):
 
                 # do some rough ordering checks that should work for all
                 # wrappers, including VecNormalize
-                assert np.all(prev_obs < terminal_obs)
-                assert np.all(obs < prev_obs)
+                assert th.all(prev_obs < terminal_obs)
+                assert th.all(obs < prev_obs)
 
                 if not isinstance(vec_env, VecNormalize):
                     # more precise tests that we can't do with VecNormalize
                     # (which changes observation values)
-                    assert np.all(prev_obs + 1 == terminal_obs)
-                    assert np.all(obs == 0)
+                    assert th.all(prev_obs + 1 == terminal_obs)
+                    assert th.all(obs == 0)
 
         prev_obs_b = obs_b
 
@@ -262,7 +263,7 @@ def check_vecenv_obs(obs, space):
     the appropriate observation space."""
     assert obs.shape[0] == N_ENVS
     for value in obs:
-        assert space.contains(value)
+        assert space.contains(value.detach().cpu().numpy())
 
 
 @pytest.mark.parametrize("vec_env_class,space", itertools.product(VEC_ENV_CLASSES, SPACES.values()))
@@ -381,10 +382,10 @@ def test_framestack_vecenv():
     """Test that framestack environment stacks on desired axis"""
 
     image_space_shape = [12, 8, 3]
-    zero_acts = np.zeros([N_ENVS, *image_space_shape])
+    zero_acts = th.zeros([N_ENVS, *image_space_shape])
 
     transposed_image_space_shape = image_space_shape[::-1]
-    transposed_zero_acts = np.zeros([N_ENVS, *transposed_image_space_shape])
+    transposed_zero_acts = th.zeros([N_ENVS, *transposed_image_space_shape])
 
     def make_image_env():
         return CustomGymEnv(
@@ -486,14 +487,14 @@ def test_vec_deterministic(vec_env_class):
     obs = vec_env.reset()
     vec_env.seed(3)
     new_obs = vec_env.reset()
-    assert np.allclose(new_obs, obs)
+    assert th.allclose(new_obs, obs)
     vec_env.close()
     # Similar test but with make_vec_env
     vec_env_1 = make_vec_env("Pendulum-v1", n_envs=N_ENVS, vec_env_cls=vec_env_class, seed=0)
     vec_env_2 = make_vec_env("Pendulum-v1", n_envs=N_ENVS, vec_env_cls=vec_env_class, seed=0)
-    assert np.allclose(vec_env_1.reset(), vec_env_2.reset())
+    assert th.allclose(vec_env_1.reset(), vec_env_2.reset())
     random_actions = [vec_env_1.action_space.sample() for _ in range(N_ENVS)]
-    assert np.allclose(vec_env_1.step(random_actions)[0], vec_env_2.step(random_actions)[0])
+    assert th.allclose(vec_env_1.step(random_actions)[0], vec_env_2.step(random_actions)[0])
     vec_env_1.close()
     vec_env_2.close()
 
@@ -519,12 +520,12 @@ def test_vec_seeding(vec_env_class):
         # Seed with no argument
         vec_env.seed()
         obs = vec_env.reset()
-        _, rewards, _, _ = vec_env.step(np.array([vec_env.action_space.sample() for _ in range(n_envs)]))
+        _, rewards, _, _ = vec_env.step([vec_env.action_space.sample() for _ in range(n_envs)])
         # Seed should be different per process
-        assert not np.allclose(obs[0], obs[1])
-        assert not np.allclose(rewards[0], rewards[1])
-        assert not np.allclose(obs[1], obs[2])
-        assert not np.allclose(rewards[1], rewards[2])
+        assert not th.allclose(obs[0], obs[1])
+        assert not th.allclose(rewards[0], rewards[1])
+        assert not th.allclose(obs[1], obs[2])
+        assert not th.allclose(rewards[1], rewards[2])
 
         vec_env.close()
 

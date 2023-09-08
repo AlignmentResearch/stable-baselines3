@@ -3,6 +3,7 @@ import warnings
 from typing import Optional, Tuple
 
 import numpy as np
+import torch
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn, VecEnvWrapper
 
@@ -63,13 +64,13 @@ class VecMonitor(VecEnvWrapper):
             )
 
         self.info_keywords = info_keywords
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.venv.device)
+        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.venv.device)
 
     def reset(self) -> VecEnvObs:
         obs = self.venv.reset()
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
+        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.venv.device)
+        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.venv.device)
         return obs
 
     def step_wait(self) -> VecEnvStepReturn:
@@ -80,8 +81,8 @@ class VecMonitor(VecEnvWrapper):
         for i in range(len(dones)):
             if dones[i]:
                 info = infos[i].copy()
-                episode_return = self.episode_returns[i]
-                episode_length = self.episode_lengths[i]
+                episode_return = self.episode_returns[i].item()
+                episode_length = self.episode_lengths[i].item()
                 episode_info = {"r": episode_return, "l": episode_length, "t": round(time.time() - self.t_start, 6)}
                 for key in self.info_keywords:
                     episode_info[key] = info[key]

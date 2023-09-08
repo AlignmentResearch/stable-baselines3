@@ -44,6 +44,8 @@ def test_cnn(tmp_path, model_class, share_features_extractor):
 
     # FakeImageEnv is channel last by default and should be wrapped
     assert is_vecenv_wrapped(model.get_env(), VecTransposeImage)
+    # Need to use the vec_env
+    env = model.get_env()
 
     obs, _ = env.reset()
 

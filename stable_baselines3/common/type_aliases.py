@@ -10,17 +10,19 @@ import torch as th
 from stable_baselines3.common import callbacks, vec_env
 
 GymEnv = Union[gym.Env, vec_env.VecEnv]
-GymObs = Union[Tuple, Dict[str, Any], np.ndarray, int]
+GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
+TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, int]
 GymResetReturn = Tuple[GymObs, Dict]
 AtariResetReturn = Tuple[np.ndarray, Dict[str, Any]]
 GymStepReturn = Tuple[GymObs, float, bool, bool, Dict]
 AtariStepReturn = Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]
 TensorDict = Dict[str, th.Tensor]
+TensorIndex = Union[int, slice, th.Tensor]
 OptimizerStateDict = Dict[str, Any]
 MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.BaseCallback]
 
 # A schedule takes the remaining progress as input
-# and ouputs a scalar (e.g. learning rate, clip range, ...)
+# and outputs a scalar (e.g. learning rate, clip range, ...)
 Schedule = Callable[[float], float]
 
 
@@ -77,11 +79,11 @@ class TrainFreq(NamedTuple):
 class PolicyPredictor(Protocol):
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).

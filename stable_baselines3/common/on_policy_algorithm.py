@@ -2,7 +2,6 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 
@@ -167,7 +166,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 actions, values, log_probs = self.policy(obs_tensor)
-            actions = actions.cpu().numpy()
+            actions = actions.to(env.device)
 
             # Rescale and perform action
             clipped_actions = actions
@@ -180,7 +179,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 else:
                     # Otherwise, clip the actions to avoid out of bound error
                     # as we are sampling from an unbounded Gaussian distribution
-                    clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                    clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 

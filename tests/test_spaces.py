@@ -11,6 +11,8 @@ from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.vec_env.util import as_numpy_dtype
+
 
 BOX_SPACE_FLOAT64 = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float64)
 BOX_SPACE_FLOAT32 = spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
@@ -165,6 +167,6 @@ def test_float64_action_space(model_class, obs_space, action_space):
 
     model = model_class(policy, env, **kwargs)
     model.learn(64)
-    initial_obs, _ = env.reset()
+    initial_obs, _ = model.get_env().reset()
     action, _ = model.predict(initial_obs, deterministic=False)
-    assert action.dtype == env.action_space.dtype
+    assert as_numpy_dtype(action.dtype) == env.action_space.dtype
