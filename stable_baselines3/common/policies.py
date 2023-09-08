@@ -5,7 +5,7 @@ import copy
 import warnings
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
 from stable_baselines3.common import pytree_dataclass
@@ -402,14 +402,20 @@ class BasePolicy(BaseModel, ABC):
         return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
 
-@dataclass_frozen_pytree
-class PolicyValueExtractorState(PyTree(th.Tensor)):
-    pi_state: PyTree[th.Tensor]
-    vf_state: PyTree[th.Tensor]
+if TYPE_CHECKING:
+    @dataclass_frozen_pytree
+    class PolicyValueExtractorState(PyTree[th.Tensor]):
+        pi_state: PyTree[th.Tensor]
+        vf_state: PyTree[th.Tensor]
+else:
+    @dataclass_frozen_pytree
+    class PolicyValueExtractorState:
+        pi_state: PyTree[th.Tensor]
+        vf_state: PyTree[th.Tensor]
 
-    def __init__(self, pi_state: PyTree[th.Tensor], vf_state: PyTree[th.Tensor]):
-        object.__setattr__(self, "pi_state", pi_state)
-        object.__setattr__(self, "vf_state", vf_state)
+        def __init__(self, pi_state: PyTree[th.Tensor], vf_state: PyTree[th.Tensor]):
+            object.__setattr__(self, "pi_state", pi_state)
+            object.__setattr__(self, "vf_state", vf_state)
 
 
 class ActorCriticPolicy(BasePolicy):

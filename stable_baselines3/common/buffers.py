@@ -30,17 +30,14 @@ except ImportError:
 
 TPyTree = TypeVar("TPyTree", bound=PyTree[th.Tensor])
 
-KT = TypeVar("KT")
-VT = TypeVar("VT")
 PyTreeGeneric = TypeVar("PyTreeGeneric", bound=PyTree)
-
 def index_into_pytree(
-    idx: KT,
-    tree: PyTreeGeneric[Mapping[KT, VT]],
-    is_leaf: Optional[Union[bool, Callable[[PyTreeGeneric[Mapping[KT, VT]]], bool]]] = None,
+    idx: Any,
+    tree: PyTreeGeneric,
+    is_leaf: Optional[Union[bool, Callable[[PyTreeGeneric], bool]]] = None,
     none_is_leaf: bool = False,
     namespace: str = NS,
-) -> PyTreeGeneric[VT]:
+) -> PyTreeGeneric:
     return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
