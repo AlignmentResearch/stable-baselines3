@@ -415,6 +415,7 @@ class RolloutBuffer(BaseBuffer):
         super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
         self.gae_lambda = gae_lambda
         self.gamma = gamma
+        self.generator_ready = False
         self.reset()
 
     def reset(self) -> None:
@@ -426,6 +427,7 @@ class RolloutBuffer(BaseBuffer):
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.generator_ready = False
         super().reset()
 
     def compute_returns_and_advantage(self, last_values: th.Tensor, dones: th.Tensor) -> None:
@@ -796,6 +798,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.generator_ready = False
         self.reset()
 
     def reset(self) -> None:
@@ -811,6 +814,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.values = self.values.view(self.buffer_size, self.n_envs).zero_()
         self.log_probs = self.log_probs.view(self.buffer_size, self.n_envs).zero_()
         self.advantages = self.advantages.view(self.buffer_size, self.n_envs).zero_()
+        self.generator_ready = False
         super(RolloutBuffer, self).reset()
 
     def add(

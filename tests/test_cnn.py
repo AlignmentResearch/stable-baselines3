@@ -47,7 +47,7 @@ def test_cnn(tmp_path, model_class, share_features_extractor):
     # Need to use the vec_env
     env = model.get_env()
 
-    obs, _ = env.reset()
+    obs = env.reset()
 
     # Test stochastic predict with channel last input
     if model_class == DQN:
