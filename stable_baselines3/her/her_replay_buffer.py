@@ -228,9 +228,9 @@ class HerReplayBuffer(DictReplayBuffer):
         virtual_env_indices, real_env_indices = env_indices.split(nb_virtual)
 
         # Get real and virtual data
-        real_data = self._get_samples(th.from_numpy(real_batch_indices), th.from_numpy(real_env_indices), env)
+        real_data = self._get_samples(real_batch_indices, real_env_indices, env)
         # Create virtual transitions by sampling new desired goals and computing new rewards
-        virtual_data = self._get_virtual_samples(th.from_numpy(virtual_batch_indices), th.from_numpy(virtual_env_indices), env)
+        virtual_data = self._get_virtual_samples(virtual_batch_indices, virtual_env_indices, env)
 
         # Concatenate real and virtual data
         return ot.tree_map(lambda x, y: th.cat((x, y)), real_data, virtual_data, namespace=OT_NAMESPACE)
