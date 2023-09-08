@@ -68,7 +68,7 @@ class BaseBuffer(ABC):
         shape = arr.shape
         if len(shape) < 3:
             shape = (*shape, 1)
-        return arr.swapaxes(0, 1).reshape(shape[0] * shape[1], *shape[2:])
+        return arr.transpose(0, 1).reshape(shape[0] * shape[1], *shape[2:])
 
     def size(self) -> int:
         """
@@ -107,12 +107,12 @@ class BaseBuffer(ABC):
         :return:
         """
         upper_bound = self.buffer_size if self.full else self.pos
-        batch_inds = np.random.randint(0, upper_bound, size=batch_size)
+        batch_inds = th.randint(0, upper_bound, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
     @abstractmethod
     def _get_samples(
-        self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None
+        self, batch_inds: Union[slice, th.Tensor], env: Optional[VecNormalize] = None
     ) -> Union[ReplayBufferSamples, RolloutBufferSamples]:
         """
         :param batch_inds:
@@ -121,7 +121,7 @@ class BaseBuffer(ABC):
         """
         raise NotImplementedError()
 
-    def to_torch(self, array: np.ndarray, copy: bool = True) -> th.Tensor:
+    def to_device(self, array: th.Tensor, copy: bool = True) -> th.Tensor:
         """
         Convert a numpy array to a PyTorch tensor.
         Note: it copies the data by default
@@ -131,23 +131,21 @@ class BaseBuffer(ABC):
             by reference). This argument is inoperative if the device is not the CPU.
         :return:
         """
-        if copy:
-            return th.tensor(array, device=self.device)
-        return th.as_tensor(array, device=self.device)
+        return array.to(self.device, copy=copy)
 
     @staticmethod
     def _normalize_obs(
-        obs: Union[np.ndarray, Dict[str, np.ndarray]],
+        obs: TensorObsType,
         env: Optional[VecNormalize] = None,
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    ) -> TensorObsType:
         if env is not None:
             return env.normalize_obs(obs)
         return obs
 
     @staticmethod
-    def _normalize_reward(reward: np.ndarray, env: Optional[VecNormalize] = None) -> np.ndarray:
+    def _normalize_reward(reward: th.Tensor, env: Optional[VecNormalize] = None) -> th.Tensor:
         if env is not None:
-            return env.normalize_reward(reward).astype(np.float32)
+            return env.normalize_reward(reward).to(th.float32)
         return reward
 
 
@@ -177,18 +175,30 @@ class ReplayBuffer(BaseBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         device: Union[th.device, str] = "auto",
+        buffer_device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
     ):
-        super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        super().__init__(
+            buffer_size,
+            observation_space,
+            action_space,
+            device=device,
+            n_envs=n_envs,
+        )
+        self.buffer_device = th.device(buffer_device)
 
         # Adjust buffer size
         self.buffer_size = max(buffer_size // n_envs, 1)
 
         # Check that the replay buffer can fit into the memory
-        if psutil is not None:
-            mem_available = psutil.virtual_memory().available
+        mem_available = None
+        if self.buffer_device.type == "cpu":
+            if psutil is not None:
+                mem_available = psutil.virtual_memory().available
+        else:
+            mem_available = th.cuda.get_device_properties(self.buffer_device).total_memory
 
         # there is a bug if both optimize_memory_usage and handle_timeout_termination are true
         # see https://github.com/DLR-RM/stable-baselines3/issues/934
@@ -199,48 +209,71 @@ class ReplayBuffer(BaseBuffer):
             )
         self.optimize_memory_usage = optimize_memory_usage
 
-        self.observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=observation_space.dtype)
+        self.observations = th.zeros(
+            (self.buffer_size, self.n_envs, *self.obs_shape),
+            dtype=as_torch_dtype(observation_space.dtype),
+            device=self.buffer_device,
+        )
 
         if optimize_memory_usage:
             # `observations` contains also the next observation
             self.next_observations = None
         else:
-            self.next_observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=observation_space.dtype)
+            self.next_observations = th.zeros(
+                (self.buffer_size, self.n_envs, *self.obs_shape),
+                dtype=as_torch_dtype(observation_space.dtype),
+                device=self.buffer_device,
+            )
 
-        self.actions = np.zeros(
-            (self.buffer_size, self.n_envs, self.action_dim), dtype=self._maybe_cast_dtype(action_space.dtype)
+        self.actions = th.zeros(
+            (self.buffer_size, self.n_envs, self.action_dim),
+            dtype=self._maybe_cast_dtype(action_space.dtype),
+            device=self.buffer_device,
         )
 
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.rewards = th.zeros(
+            (self.buffer_size, self.n_envs),
+            dtype=th.float32,
+            device=self.buffer_device,
+        )
+        self.dones = th.zeros(
+            (self.buffer_size, self.n_envs),
+            dtype=th.float32,
+            device=self.buffer_device,
+        )
         # Handle timeouts termination properly if needed
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
-        self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.timeouts = th.zeros(
+            (self.buffer_size, self.n_envs),
+            dtype=th.float32,
+            device=self.buffer_device,
+        )
 
-        if psutil is not None:
-            total_memory_usage = self.observations.nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
+        if mem_available is not None:
+            total_memory_usage = nbytes(self.observations) + nbytes(self.actions) + nbytes(self.rewards) + nbytes(self.dones)
 
             if self.next_observations is not None:
-                total_memory_usage += self.next_observations.nbytes
+                total_memory_usage += nbytes(self.next_observations)
 
             if total_memory_usage > mem_available:
                 # Convert to GB
-                total_memory_usage /= 1e9
-                mem_available /= 1e9
+                _total_memory_usage = total_memory_usage / 1e9
+                _mem_available = mem_available / 1e9
                 warnings.warn(
-                    "This system does not have apparently enough memory to store the complete "
-                    f"replay buffer {total_memory_usage:.2f}GB > {mem_available:.2f}GB"
+                    f"The device {self.buffer_device} does not have apparently enough memory to store the complete "
+                    f"replay buffer {_total_memory_usage:.2f}GB > {_mem_available:.2f}GB"
                 )
 
     def add(
         self,
-        obs: np.ndarray,
-        next_obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        obs: th.Tensor,
+        next_obs: th.Tensor,
+        action: th.Tensor,
+        reward: th.Tensor,
+        done: th.Tensor,
         infos: List[Dict[str, Any]],
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         # Reshape needed when using multiple envs with discrete observations
         # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
@@ -252,19 +285,27 @@ class ReplayBuffer(BaseBuffer):
         action = action.reshape((self.n_envs, self.action_dim))
 
         # Copy to avoid modification by reference
-        self.observations[self.pos] = np.array(obs).copy()
+        assert isinstance(self.observations, th.Tensor)
+        self.observations[self.pos].copy_(obs, non_blocking=True)
 
         if self.optimize_memory_usage:
-            self.observations[(self.pos + 1) % self.buffer_size] = np.array(next_obs).copy()
+            self.observations[(self.pos + 1) % self.buffer_size].copy_(next_obs, non_blocking=True)
         else:
-            self.next_observations[self.pos] = np.array(next_obs).copy()
+            assert isinstance(self.next_observations, th.Tensor)
+            self.next_observations[self.pos].copy_(next_obs, non_blocking=True)
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.dones[self.pos] = np.array(done).copy()
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
+        _ = ot.tree_map(
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+        )
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
+            for i, info in enumerate(infos):
+                self.timeouts[self.pos, i].copy_(
+                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True
+                )
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -288,14 +329,14 @@ class ReplayBuffer(BaseBuffer):
         # Do not sample the element with index `self.pos` as the transitions is invalid
         # (we use only one array to store `obs` and `next_obs`)
         if self.full:
-            batch_inds = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_inds = (th.randint(1, self.buffer_size, size=(batch_size,)) + self.pos) % self.buffer_size
         else:
-            batch_inds = np.random.randint(0, self.pos, size=batch_size)
+            batch_inds = th.randint(0, self.pos, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
     def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
-        env_indices = np.random.randint(0, high=self.n_envs, size=(len(batch_inds),))
+        env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 
         if self.optimize_memory_usage:
             next_obs = self._normalize_obs(self.observations[(batch_inds + 1) % self.buffer_size, env_indices, :], env)
@@ -311,10 +352,10 @@ class ReplayBuffer(BaseBuffer):
             (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
             self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env),
         )
-        return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+        return ReplayBufferSamples(*tuple(map(self.to_device, data)))
 
     @staticmethod
-    def _maybe_cast_dtype(dtype: np.typing.DTypeLike) -> np.typing.DTypeLike:
+    def _maybe_cast_dtype(dtype: Union[np.typing.DTypeLike, th.dtype]) -> th.dtype:
         """
         Cast `np.float64` action datatype to `np.float32`,
         keep the others dtype unchanged.
@@ -324,8 +365,9 @@ class ReplayBuffer(BaseBuffer):
         :return: ``np.float32`` if the dtype was float64,
             the original dtype otherwise.
         """
-        if dtype == np.float64:
-            return np.float32
+        dtype = as_torch_dtype(dtype)
+        if dtype == th.float64:
+            return th.float32
         return dtype
 
 
@@ -352,14 +394,15 @@ class RolloutBuffer(BaseBuffer):
     :param n_envs: Number of parallel environments
     """
 
-    observations: np.ndarray
-    actions: np.ndarray
-    rewards: np.ndarray
-    advantages: np.ndarray
-    returns: np.ndarray
-    episode_starts: np.ndarray
-    log_probs: np.ndarray
-    values: np.ndarray
+    observations: Union[th.Tensor, TensorDict]
+    actions: th.Tensor
+    rewards: th.Tensor
+    advantages: th.Tensor
+    returns: th.Tensor
+    episode_starts: th.Tensor
+    log_probs: th.Tensor
+    values: th.Tensor
+    extractor_states: PyTree[th.Tensor]
 
     def __init__(
         self,
@@ -374,22 +417,20 @@ class RolloutBuffer(BaseBuffer):
         super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
         self.gae_lambda = gae_lambda
         self.gamma = gamma
-        self.generator_ready = False
         self.reset()
 
     def reset(self) -> None:
-        self.observations = np.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=np.float32)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.generator_ready = False
+        self.observations = th.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=th.float32, device=self.device)
+        self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32, device=self.device)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         super().reset()
 
-    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
+    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: th.Tensor) -> None:
         """
         Post-processing step: compute the lambda-return (TD(lambda) estimate)
         and GAE(lambda) advantage.
@@ -409,12 +450,12 @@ class RolloutBuffer(BaseBuffer):
         :param dones: if the last step was a terminal step (one bool for each env).
         """
         # Convert to numpy
-        last_values = last_values.clone().cpu().numpy().flatten()
+        last_values = last_values.flatten()
 
-        last_gae_lam = 0
+        last_gae_lam: Union[float, th.Tensor] = 0.0
         for step in reversed(range(self.buffer_size)):
             if step == self.buffer_size - 1:
-                next_non_terminal = 1.0 - dones
+                next_non_terminal = ~dones
                 next_values = last_values
             else:
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
@@ -428,12 +469,13 @@ class RolloutBuffer(BaseBuffer):
 
     def add(
         self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
+        obs: th.Tensor,
+        action: th.Tensor,
+        reward: th.Tensor,
+        episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
+        extractor_states: PyTree[th.Tensor],
     ) -> None:
         """
         :param obs: Observation
@@ -457,19 +499,20 @@ class RolloutBuffer(BaseBuffer):
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.observations[self.pos] = np.array(obs).copy()
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.episode_starts[self.pos] = np.array(episode_start).copy()
-        self.values[self.pos] = value.clone().cpu().numpy().flatten()
-        self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        assert isinstance(self.observations, th.Tensor)
+        self.observations[self.pos].copy_(obs, non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
     def get(self, batch_size: Optional[int] = None) -> Generator[RolloutBufferSamples, None, None]:
         assert self.full, ""
-        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        indices = th.randperm(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
             _tensor_names = [
@@ -507,7 +550,7 @@ class RolloutBuffer(BaseBuffer):
             self.advantages[batch_inds].flatten(),
             self.returns[batch_inds].flatten(),
         )
-        return RolloutBufferSamples(*tuple(map(self.to_torch, data)))
+        return RolloutBufferSamples(*tuple(map(self.to_device, data)))
 
 
 class DictReplayBuffer(ReplayBuffer):
@@ -530,21 +573,27 @@ class DictReplayBuffer(ReplayBuffer):
     def __init__(
         self,
         buffer_size: int,
-        observation_space: spaces.Space,
+        observation_space: spaces.Dict,
         action_space: spaces.Space,
         device: Union[th.device, str] = "auto",
+        buffer_device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
     ):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        self.buffer_device = th.device(buffer_device)
 
         assert isinstance(self.obs_shape, dict), "DictReplayBuffer must be used with Dict obs space only"
         self.buffer_size = max(buffer_size // n_envs, 1)
 
         # Check that the replay buffer can fit into the memory
-        if psutil is not None:
-            mem_available = psutil.virtual_memory().available
+        mem_available = None
+        if self.buffer_device.type == "cpu":
+            if psutil is not None:
+                mem_available = psutil.virtual_memory().available
+        else:
+            mem_available = th.cuda.get_device_properties(self.buffer_device).total_memory
 
         assert optimize_memory_usage is False, "DictReplayBuffer does not support optimize_memory_usage"
         # disabling as this adds quite a bit of complexity
@@ -552,88 +601,111 @@ class DictReplayBuffer(ReplayBuffer):
         self.optimize_memory_usage = optimize_memory_usage
 
         self.observations = {
-            key: np.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=observation_space[key].dtype)
+            key: th.zeros(
+                (self.buffer_size, self.n_envs, *_obs_shape),
+                dtype=as_torch_dtype(observation_space[key].dtype),
+                device=self.buffer_device,
+            )
             for key, _obs_shape in self.obs_shape.items()
         }
         self.next_observations = {
-            key: np.zeros((self.buffer_size, self.n_envs, *_obs_shape), dtype=observation_space[key].dtype)
+            key: th.zeros(
+                (self.buffer_size, self.n_envs, *_obs_shape),
+                dtype=as_torch_dtype(observation_space[key].dtype),
+                device=self.buffer_device,
+            )
             for key, _obs_shape in self.obs_shape.items()
         }
 
-        self.actions = np.zeros(
-            (self.buffer_size, self.n_envs, self.action_dim), dtype=self._maybe_cast_dtype(action_space.dtype)
+        self.actions = th.zeros(
+            (self.buffer_size, self.n_envs, self.action_dim),
+            dtype=self._maybe_cast_dtype(action_space.dtype),
+            device=self.buffer_device,
         )
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.buffer_device)
+        self.dones = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.buffer_device)
 
         # Handle timeouts termination properly if needed
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
-        self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.timeouts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.buffer_device)
 
-        if psutil is not None:
+        if mem_available is not None:
             obs_nbytes = 0
             for _, obs in self.observations.items():
-                obs_nbytes += obs.nbytes
+                obs_nbytes += nbytes(obs)
 
-            total_memory_usage = obs_nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
+            total_memory_usage = obs_nbytes + nbytes(self.actions) + nbytes(self.rewards) + nbytes(self.dones)
             if self.next_observations is not None:
                 next_obs_nbytes = 0
                 for _, obs in self.observations.items():
-                    next_obs_nbytes += obs.nbytes
+                    next_obs_nbytes += nbytes(obs)
                 total_memory_usage += next_obs_nbytes
 
             if total_memory_usage > mem_available:
                 # Convert to GB
-                total_memory_usage /= 1e9
-                mem_available /= 1e9
+                _total_memory_usage = total_memory_usage / 1e9
+                _mem_available = mem_available / 1e9
                 warnings.warn(
                     "This system does not have apparently enough memory to store the complete "
-                    f"replay buffer {total_memory_usage:.2f}GB > {mem_available:.2f}GB"
+                    f"replay buffer {_total_memory_usage:.2f}GB > {mem_available:.2f}GB"
                 )
 
     def add(
         self,
-        obs: Dict[str, np.ndarray],
-        next_obs: Dict[str, np.ndarray],
-        action: np.ndarray,
-        reward: np.ndarray,
-        done: np.ndarray,
+        obs: Dict[str, th.Tensor],  # type: ignore[override]
+        next_obs: Dict[str, th.Tensor],  # type: ignore[override]
+        action: th.Tensor,
+        reward: th.Tensor,
+        done: th.Tensor,
         infos: List[Dict[str, Any]],
+        extractor_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         # Copy to avoid modification by reference
+        assert (
+            isinstance(self.observations, dict)
+            and isinstance(self.observation_space, spaces.Dict)
+            and isinstance(self.obs_shape, dict)
+            and isinstance(self.next_observations, dict)
+        )
         for key in self.observations.keys():
             # Reshape needed when using multiple envs with discrete observations
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs[key] = obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos] = np.array(obs[key])
+            self.observations[key][self.pos].copy_(obs[key], non_blocking=True)
 
         for key in self.next_observations.keys():
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 next_obs[key] = next_obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.next_observations[key][self.pos] = np.array(next_obs[key]).copy()
+            self.next_observations[key][self.pos].copy_(next_obs[key], non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.dones[self.pos] = np.array(done).copy()
+        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
+        _ = ot.tree_map(
+            lambda x, y: x[self.pos].copy_(y, non_blocking=True), self.extractor_states, extractor_states, namespace=NS
+        )
 
         if self.handle_timeout_termination:
-            self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
+            for i, info in enumerate(infos):
+                self.timeouts[self.pos, i].copy_(
+                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True
+                )
 
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
             self.pos = 0
 
-    def sample(
+    def sample(  # type: ignore[override]
         self,
         batch_size: int,
         env: Optional[VecNormalize] = None,
-    ) -> DictReplayBufferSamples:  # type: ignore[signature-mismatch] #FIXME:
+    ) -> DictReplayBufferSamples:
         """
         Sample elements from the replay buffer.
 
@@ -644,13 +716,15 @@ class DictReplayBuffer(ReplayBuffer):
         """
         return super(ReplayBuffer, self).sample(batch_size=batch_size, env=env)
 
-    def _get_samples(
+    def _get_samples(  # type: ignore[override]
         self,
-        batch_inds: np.ndarray,
+        batch_inds: Union[slice, th.Tensor],
+        env_inds: Optional[th.Tensor] = None,
         env: Optional[VecNormalize] = None,
-    ) -> DictReplayBufferSamples:  # type: ignore[signature-mismatch] #FIXME:
+    ) -> DictReplayBufferSamples:
         # Sample randomly the env idx
-        env_indices = np.random.randint(0, high=self.n_envs, size=(len(batch_inds),))
+        if env_inds is None:
+            env_inds = th.randint(0, self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 
         # Normalize if needed and remove extra dimension (we are using only one env for now)
         obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}, env)
@@ -658,20 +732,20 @@ class DictReplayBuffer(ReplayBuffer):
             {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}, env
         )
 
-        # Convert to torch tensor
-        observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
-        next_observations = {key: self.to_torch(obs) for key, obs in next_obs_.items()}
+        # Convert to correct device
+        observations = {key: self.to_device(obs) for key, obs in obs_.items()}
+        next_observations = {key: self.to_device(obs) for key, obs in next_obs_.items()}
 
         return DictReplayBufferSamples(
             observations=observations,
-            actions=self.to_torch(self.actions[batch_inds, env_indices]),
+            actions=self.to_device(self.actions[batch_inds, env_indices]),
             next_observations=next_observations,
             # Only use dones that are not due to timeouts
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
+            dones=self.to_device(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
                 -1, 1
             ),
-            rewards=self.to_torch(self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env)),
+            rewards=self.to_device(self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env)),
         )
 
 
@@ -719,32 +793,47 @@ class DictRolloutBuffer(RolloutBuffer):
         self.gae_lambda = gae_lambda
         self.gamma = gamma
 
-        self.generator_ready = False
+        self.observations = {}
+        for key, obs_input_shape in self.obs_shape.items():
+            self.observations[key] = th.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=th.float32)
+        self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
+        self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.reset()
 
     def reset(self) -> None:
-        assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
-        self.observations = {}
+        assert isinstance(self.obs_shape, dict) and isinstance(
+            self.observations, dict
+        ), "DictRolloutBuffer must be used with Dict obs space only"
         for key, obs_input_shape in self.obs_shape.items():
-            self.observations[key] = np.zeros((self.buffer_size, self.n_envs, *obs_input_shape), dtype=np.float32)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
-        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.generator_ready = False
+            self.observations[key] = self.observations[key].view(self.buffer_size, self.n_envs, *obs_input_shape).zero_()
+        self.actions = self.actions.view(self.buffer_size, self.n_envs, self.action_dim).zero_()
+        self.rewards = self.rewards.view(self.buffer_size, self.n_envs).zero_()
+        self.returns = self.returns.view(self.buffer_size, self.n_envs).zero_()
+        self.episode_starts = self.episode_starts.view(self.buffer_size, self.n_envs).zero_()
+        self.values = self.values.view(self.buffer_size, self.n_envs).zero_()
+        self.log_probs = self.log_probs.view(self.buffer_size, self.n_envs).zero_()
+        self.advantages = self.advantages.view(self.buffer_size, self.n_envs).zero_()
+        self.extractor_states = ot.tree_map(
+            lambda x: th.zeros((self.buffer_size, self.n_envs, *x.shape), dtype=x.dtype, device=self.device),
+            self.extractor_state_example,
+            namespace=NS,
+        )
         super(RolloutBuffer, self).reset()
 
     def add(
         self,
-        obs: Dict[str, np.ndarray],
-        action: np.ndarray,
-        reward: np.ndarray,
-        episode_start: np.ndarray,
+        obs: Dict[str, th.Tensor],  # type: ignore[override]
+        action: th.Tensor,
+        reward: th.Tensor,
+        episode_start: th.Tensor,
         value: th.Tensor,
         log_prob: th.Tensor,
+        extractor_states: PyTree[th.Tensor],
     ) -> None:  # pytype: disable=signature-mismatch
         """
         :param obs: Observation
@@ -760,22 +849,27 @@ class DictRolloutBuffer(RolloutBuffer):
             # Reshape 0-d tensor to avoid error
             log_prob = log_prob.reshape(-1, 1)
 
+        assert (
+            isinstance(self.observations, dict)
+            and isinstance(self.observation_space, spaces.Dict)
+            and isinstance(self.obs_shape, dict)
+        )
         for key in self.observations.keys():
-            obs_ = np.array(obs[key]).copy()
+            obs_ = obs[key]
             # Reshape needed when using multiple envs with discrete observations
-            # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
+            # as torch cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos] = obs_
+            self.observations[key][self.pos].copy_(obs_, non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos] = np.array(action).copy()
-        self.rewards[self.pos] = np.array(reward).copy()
-        self.episode_starts[self.pos] = np.array(episode_start).copy()
-        self.values[self.pos] = value.clone().cpu().numpy().flatten()
-        self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -785,7 +879,7 @@ class DictRolloutBuffer(RolloutBuffer):
         batch_size: Optional[int] = None,
     ) -> Generator[DictRolloutBufferSamples, None, None]:  # type: ignore[signature-mismatch] #FIXME
         assert self.full, ""
-        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        indices = th.randperm(self.buffer_size * self.n_envs)
         # Prepare the data
         if not self.generator_ready:
             for key, obs in self.observations.items():
@@ -806,16 +900,16 @@ class DictRolloutBuffer(RolloutBuffer):
             yield self._get_samples(indices[start_idx : start_idx + batch_size])
             start_idx += batch_size
 
-    def _get_samples(
+    def _get_samples(  # type: ignore[override]
         self,
-        batch_inds: np.ndarray,
+        batch_inds: Union[slice, th.Tensor],
         env: Optional[VecNormalize] = None,
-    ) -> DictRolloutBufferSamples:  # type: ignore[signature-mismatch] #FIXME
+    ) -> DictRolloutBufferSamples:
         return DictRolloutBufferSamples(
-            observations={key: self.to_torch(obs[batch_inds]) for (key, obs) in self.observations.items()},
-            actions=self.to_torch(self.actions[batch_inds]),
-            old_values=self.to_torch(self.values[batch_inds].flatten()),
-            old_log_prob=self.to_torch(self.log_probs[batch_inds].flatten()),
-            advantages=self.to_torch(self.advantages[batch_inds].flatten()),
-            returns=self.to_torch(self.returns[batch_inds].flatten()),
+            observations={key: self.to_device(obs[batch_inds]) for (key, obs) in self.observations.items()},
+            actions=self.to_device(self.actions[batch_inds]),
+            old_values=self.to_device(self.values[batch_inds].flatten()),
+            old_log_prob=self.to_device(self.log_probs[batch_inds].flatten()),
+            advantages=self.to_device(self.advantages[batch_inds].flatten()),
+            returns=self.to_device(self.returns[batch_inds].flatten()),
         )
