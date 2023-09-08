@@ -57,7 +57,7 @@ jobs:
       - run:
           name: Run tests
           command: |
-            /workspace/dist_test.py -c circleci_worker --worker-out-dir /workspace/test-results third_party/stable-baselines3
+            /workspace/dist_test.py -c circleci_worker --worker-out-dir /workspace/test-results .
           environment:
             OMP_NUM_THREADS: "2"
       - save-worker-test-results
