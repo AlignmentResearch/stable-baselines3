@@ -167,6 +167,6 @@ def test_float64_action_space(model_class, obs_space, action_space):
 
     model = model_class(policy, env, **kwargs)
     model.learn(64)
-    initial_obs, _ = model.get_env().reset()
+    initial_obs = model.get_env().reset()
     action, _ = model.predict(initial_obs, deterministic=False)
     assert as_numpy_dtype(action.dtype) == env.action_space.dtype

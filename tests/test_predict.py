@@ -115,5 +115,5 @@ def test_subclassed_space_env(model_class):
     env = CustomSubClassedSpaceEnv()
     model = model_class("MlpPolicy", env, policy_kwargs=dict(net_arch=[32]))
     model.learn(300)
-    obs, _ = model.get_env().reset()
+    obs = model.get_env().reset()
     env.step(model.predict(obs))

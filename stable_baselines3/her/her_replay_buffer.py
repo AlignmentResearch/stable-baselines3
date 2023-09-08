@@ -249,8 +249,8 @@ class HerReplayBuffer(DictReplayBuffer):
 
     def _get_real_samples(
         self,
-        batch_indices: np.ndarray,
-        env_indices: np.ndarray,
+        batch_indices: th.Tensor,
+        env_indices: th.Tensor,
         env: Optional[VecNormalize] = None,
     ) -> DictReplayBufferSamples:
         """
