@@ -42,6 +42,7 @@ jobs:
       - checkout
       - run: isort --profile black --check .
       - run: black --check .
+      - run: ruff check .
       - run: mypy .
   py-tests:
     docker:

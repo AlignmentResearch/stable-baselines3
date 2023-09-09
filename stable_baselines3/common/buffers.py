@@ -1,6 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Mapping, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, TypeVar, Union
 
 import numpy as np
 import optree as ot
@@ -890,7 +890,7 @@ class DictRolloutBuffer(RolloutBuffer):
 
         self.observations = {}
         for key, obs_input_shape in self.obs_shape.items():
-            self.observations[key] = th.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=th.float32)
+            self.observations[key] = th.zeros((self.buffer_size, self.n_envs, *obs_input_shape), dtype=th.float32)
         self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
         self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)

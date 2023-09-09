@@ -501,7 +501,7 @@ def obs_as_tensor(
     try:
         return th.as_tensor(obs, device=device)
     except Exception as e:
-        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}")
+        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}") from e
 
 
 def should_collect_more_steps(

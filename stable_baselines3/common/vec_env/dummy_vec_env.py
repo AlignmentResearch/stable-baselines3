@@ -4,7 +4,6 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, cast
 
 import gymnasium as gym
-import numpy as np
 import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs, VecEnvStepReturn

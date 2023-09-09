@@ -4,7 +4,6 @@ from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 import gymnasium as gym
-import numpy as np
 import torch as th
 from gymnasium import spaces
 

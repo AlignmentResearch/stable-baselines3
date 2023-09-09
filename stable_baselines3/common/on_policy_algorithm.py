@@ -219,7 +219,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
                         terminal_recurrent_state = ot.tree_map(
-                            lambda x: x[:, idx : idx + 1, :].contiguous(), recurrent_states, namespace=OT_NAMESPACE
+                            lambda x: x[:, idx : idx + 1, :].contiguous(),  # noqa: B023
+                            recurrent_states,
+                            namespace=OT_NAMESPACE,
                         )
                         episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
                         terminal_value_and_state = self.policy.predict_values(terminal_obs, terminal_recurrent_state)
@@ -241,7 +243,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), recurrent_state=recurrent_states)  # type: ignore[arg-type]
+            value_and_state = self.policy.predict_values(
+                obs_as_tensor(new_obs, self.device), recurrent_state=recurrent_states
+            )  # type: ignore[arg-type]
 
         rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
 
