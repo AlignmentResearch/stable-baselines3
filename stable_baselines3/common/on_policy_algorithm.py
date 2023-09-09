@@ -243,9 +243,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            value_and_state = self.policy.predict_values(
-                obs_as_tensor(new_obs, self.device), recurrent_state=recurrent_states
-            )  # type: ignore[arg-type]
+            value_and_state = self.policy.predict_values(obs_as_tensor(new_obs, self.device), recurrent_state=recurrent_states)
 
         rollout_buffer.compute_returns_and_advantage(last_values=value_and_state.out, dones=dones)
 

@@ -123,9 +123,9 @@ class NatureCNN(BaseFeaturesExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
-    def forward(
+    def forward(  # type: ignore[override]
         self, observations: th.Tensor, state: PyTree[th.Tensor] = EMPTY_PYTREE
-    ) -> OutAndState[th.Tensor]:  # type: ignore[override]
+    ) -> OutAndState[th.Tensor]:
         return OutAndState(self.linear(self.cnn(observations)), state)
 
 
