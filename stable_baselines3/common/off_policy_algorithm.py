@@ -6,8 +6,6 @@ import warnings
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-import numpy as np
-import optree as ot
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
@@ -17,7 +15,6 @@ from stable_baselines3.common.buffers import DictReplayBuffer, ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
 from stable_baselines3.common.type_aliases import (
     GymEnv,
@@ -27,7 +24,6 @@ from stable_baselines3.common.type_aliases import (
     Schedule,
     TrainFreq,
     TrainFrequencyUnit,
-    unwrap,
 )
 from stable_baselines3.common.utils import safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv

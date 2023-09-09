@@ -93,7 +93,7 @@ def test_vec_transpose_skip(tmp_path, model_class):
     model = model_class("CnnPolicy", env, **kwargs).learn(250)
 
     obs = env.reset()
-    action = model.predict(obs, deterministic=True).out
+    _ = model.predict(obs, deterministic=True)
 
 
 def patch_dqn_names_(model):

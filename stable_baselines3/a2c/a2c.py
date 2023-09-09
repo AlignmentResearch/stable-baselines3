@@ -1,6 +1,5 @@
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
-import optree as ot
 import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F

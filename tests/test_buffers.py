@@ -125,7 +125,7 @@ def test_device_buffer(replay_buffer_cls, device):
     env = make_vec_env(env)
 
     if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-        recurrent_state_example = {"a": {"b": th.rand((4))}}
+        recurrent_state_example = {"a": {"b": th.rand(4)}}
     else:
         recurrent_state_example = ()
 

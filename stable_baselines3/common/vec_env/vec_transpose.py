@@ -1,7 +1,6 @@
 from copy import deepcopy
 from typing import Dict, Union
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 

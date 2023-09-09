@@ -5,7 +5,7 @@ import random
 import re
 from collections import deque
 from itertools import zip_longest
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union, overload
 
 import cloudpickle
 import gymnasium as gym
@@ -22,7 +22,7 @@ except ImportError:
     SummaryWriter = None  # type: ignore[misc, assignment]
 
 from stable_baselines3.common.logger import Logger, configure
-from stable_baselines3.common.type_aliases import GymEnv, Schedule, TensorDict, TrainFreq, TrainFrequencyUnit
+from stable_baselines3.common.type_aliases import GymEnv, Schedule, TrainFreq, TrainFrequencyUnit
 
 
 def nbytes(t: th.Tensor) -> int:
@@ -483,9 +483,22 @@ def polyak_update(
             th.add(target_param.data, param.data, alpha=tau, out=target_param.data)
 
 
-def obs_as_tensor(
-    obs: Union[th.Tensor, np.ndarray, Dict[str, th.Tensor], Dict[str, np.ndarray]], device: th.device
-) -> Union[th.Tensor, TensorDict]:
+@overload
+def obs_as_tensor(obs: Union[np.ndarray, th.Tensor], device: th.device) -> th.Tensor:
+    ...
+
+
+@overload
+def obs_as_tensor(obs: Union[Tuple[np.ndarray, ...], Tuple[th.Tensor, ...]], device: th.device) -> Tuple[th.Tensor, ...]:
+    ...
+
+
+@overload
+def obs_as_tensor(obs: Union[Dict[str, np.ndarray], Dict[str, th.Tensor]], device: th.device) -> Dict[str, th.Tensor]:
+    ...
+
+
+def obs_as_tensor(obs, device):
     """
     Moves the observation to the given device.
 
@@ -501,7 +514,7 @@ def obs_as_tensor(
     try:
         return th.as_tensor(obs, device=device)
     except Exception as e:
-        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}")
+        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}") from e
 
 
 def should_collect_more_steps(

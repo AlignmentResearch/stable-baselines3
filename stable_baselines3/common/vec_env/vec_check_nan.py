@@ -1,7 +1,6 @@
 import warnings
 from typing import List, Tuple
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 

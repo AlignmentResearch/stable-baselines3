@@ -9,7 +9,7 @@ parameters:
   docker_img_version:
     # Docker image version for running tests.
     type: string
-    default: "ca20aa2"
+    default: "b194961"
 
 workflows:
   test-jobs:
@@ -42,6 +42,7 @@ jobs:
       - checkout
       - run: isort --profile black --check .
       - run: black --check .
+      - run: ruff check .
       - run: mypy .
   py-tests:
     docker:

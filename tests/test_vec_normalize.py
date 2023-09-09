@@ -1,4 +1,3 @@
-import operator
 from typing import Any, Dict, Optional
 
 import gymnasium as gym

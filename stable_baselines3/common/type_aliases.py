@@ -13,8 +13,8 @@ from stable_baselines3.common import callbacks, vec_env
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 
 GymEnv = Union[gym.Env, vec_env.VecEnv]
-GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
-TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, int]
+GymObs = Union[int, np.ndarray, Tuple[np.ndarray, ...], Dict[str, np.ndarray]]
+TorchGymObs = Union[int, th.Tensor, Tuple[th.Tensor, ...], Dict[str, th.Tensor]]
 GymResetReturn = Tuple[GymObs, Dict]
 AtariResetReturn = Tuple[np.ndarray, Dict[str, Any]]
 GymStepReturn = Tuple[GymObs, float, bool, bool, Dict]

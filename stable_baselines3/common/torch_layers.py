@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Generic, List, Mapping, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Dict, List, Mapping, Optional, Tuple, Type, TypeVar, Union, cast
 
 import gymnasium as gym
 import optree as ot
@@ -9,7 +9,7 @@ from torch import nn
 
 from stable_baselines3.common.buffers import index_into_pytree
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE, dataclass_frozen_pytree
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
 from stable_baselines3.common.type_aliases import EMPTY_PYTREE, OutAndState, TensorDict
 from stable_baselines3.common.utils import get_device
 
@@ -150,7 +150,9 @@ class NatureCNN(BaseFeaturesExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
-    def forward(self, observations: th.Tensor, state: PyTree[th.Tensor] = EMPTY_PYTREE) -> OutAndState[th.Tensor]:  # type: ignore[override]
+    def forward(  # type: ignore[override]
+        self, observations: th.Tensor, state: PyTree[th.Tensor] = EMPTY_PYTREE
+    ) -> OutAndState[th.Tensor]:
         return OutAndState(self.linear(self.cnn(observations)), state)
 
 

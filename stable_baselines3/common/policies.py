@@ -1,11 +1,10 @@
 """Policies: abstract base class and concrete implementations."""
 
 import collections
-import copy
 import warnings
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
@@ -13,7 +12,6 @@ from gymnasium import spaces
 from optree import PyTree, tree_flatten
 from torch import nn
 
-from stable_baselines3.common import pytree_dataclass
 from stable_baselines3.common.distributions import (
     BernoulliDistribution,
     CategoricalDistribution,
@@ -23,7 +21,7 @@ from stable_baselines3.common.distributions import (
     StateDependentNoiseDistribution,
     make_proba_distribution,
 )
-from stable_baselines3.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
+from stable_baselines3.common.preprocessing import get_action_dim, maybe_transpose, preprocess_obs
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
