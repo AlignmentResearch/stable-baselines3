@@ -1,6 +1,7 @@
+import enum
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, TypeVar, Union
 
 import numpy as np
 import optree as ot
@@ -82,31 +83,6 @@ class BaseBuffer(ABC):
         self.full = False
         self.device = get_device(device)
         self.n_envs = n_envs
-
-    def swap_and_flatten(self, arr: th.Tensor, flat: bool, force_maintain_order: bool = False) -> th.Tensor:
-        """Flatten axes 0 (buffer size) and 1 (n_envs), maintaining the temporal order of states.
-
-        If force_maintain_order is False and the buffer is not tracking any policy state, skip the axis swap step (it
-        can be very expensive).
-
-        If the original environment state is a scalar, turns it into a 1-dimensional vector.
-
-        :param arr: the Tensor to swap and flatten
-        :param force_maintain_order: whether to maintain the order of states even if the policy is not recurrent.
-        :return:
-
-        """
-        if flat:
-            shape = (-1,)
-        else:
-            shape = arr.shape
-            if len(shape) < 3:
-                shape = (*shape, 1)
-            shape = (shape[0] * shape[1], *shape[2:])
-
-        if self.policy_is_recurrent or force_maintain_order:
-            arr = arr.transpose(0, 1)
-        return arr.reshape(shape)
 
     def size(self) -> int:
         """
@@ -437,6 +413,11 @@ class ReplayBuffer(BaseBuffer):
         return dtype
 
 
+class SamplingStrategy(enum.Enum):
+    SCRAMBLE = "scramble"
+    TRUNCATE = "truncate"
+
+
 class RolloutBuffer(BaseBuffer):
     """
     Rollout buffer used in on-policy algorithms like A2C/PPO.
@@ -470,6 +451,11 @@ class RolloutBuffer(BaseBuffer):
     values: th.Tensor
     recurrent_states: PyTree[th.Tensor]
 
+    gae_lambda: float
+    gamma: float
+    n_envs: int
+    sampling_strategy: SamplingStrategy
+
     def __init__(
         self,
         buffer_size: int,
@@ -480,11 +466,27 @@ class RolloutBuffer(BaseBuffer):
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
+        sampling_strategy: Union[Literal["auto", "scramble", "truncate"], SamplingStrategy] = "auto",
     ):
         super().__init__(buffer_size, observation_space, action_space, recurrent_state_example, device, n_envs=n_envs)
         self.gae_lambda = gae_lambda
         self.gamma = gamma
         self.reset()
+        self._assign_sampling_strategy(sampling_strategy)
+
+    def _assign_sampling_strategy(self, sampling_strategy: Union[Literal["auto", "scramble", "truncate"], SamplingStrategy]):
+        if sampling_strategy == "auto":
+            self.sampling_strategy = SamplingStrategy.TRUNCATE if self.policy_is_recurrent else SamplingStrategy.SCRAMBLE
+        elif isinstance(sampling_strategy, str):
+            self.sampling_strategy = SamplingStrategy(sampling_strategy)
+        else:
+            self.sampling_strategy = sampling_strategy
+
+        if self.policy_is_recurrent and self.sampling_strategy == SamplingStrategy.SCRAMBLE:
+            raise ValueError(
+                "The 'SCRAMBLE' sampling strategy breaks the sequential order of states, and is thus not appropriate "
+                "for recurrent policies."
+            )
 
     def reset(self) -> None:
         self.observations = th.zeros((self.buffer_size, self.n_envs, *self.obs_shape), dtype=th.float32, device=self.device)
@@ -594,21 +596,62 @@ class RolloutBuffer(BaseBuffer):
         if batch_size is None:
             batch_size = self.buffer_size * self.n_envs
 
+        if self.sampling_strategy != SamplingStrategy.SCRAMBLE and batch_size % self.n_envs != 0:
+            raise ValueError(
+                f"The '{self.sampling_strategy}' sampling strategy requires the batch size to be a multiple of the "
+                f"number of environments (n_envs={self.n_envs}), but batch_size={batch_size}."
+            )
+
         if batch_size == self.buffer_size * self.n_envs:
+            # All strategies are the same when the whole buffer is to be returned
             yield self._get_samples(slice(None))
         else:
-            indices = th.randperm(self.buffer_size * self.n_envs)
-            start_idx = 0
+            if self.sampling_strategy == SamplingStrategy.SCRAMBLE:
+                indices = th.randperm(self.buffer_size * self.n_envs)
+                for start_idx in range(0, len(indices), batch_size):
+                    yield self._get_samples(indices[start_idx : start_idx + batch_size])
 
-            while start_idx < self.buffer_size * self.n_envs:
-                yield self._get_samples(indices[start_idx : start_idx + batch_size])
-                start_idx += batch_size
+            elif self.sampling_strategy == SamplingStrategy.TRUNCATE:
+                temporal_batch_size = batch_size // self.n_envs
+                for start_idx in range(0, self.buffer_size, temporal_batch_size):
+                    yield self._get_samples(slice(start_idx, start_idx + temporal_batch_size))
+
+            else:
+                raise NotImplementedError(f"Sampling strategy {self.sampling_strategy} not implemented.")
+
+    def _maybe_flatten_batch_and_time(self, arr: th.Tensor, flat: bool) -> th.Tensor:
+        """Flatten axes 0 (buffer size) and 1 (n_envs), if using the SCRAMBLE strategy.
+
+        :param arr: the Tensor to reshape. It may be a batch of scalars, or a batch of tensors.
+        :param flat: If True, flatten the non-batch axes. If False, leave them as-is unless they're a scalar, in which
+            case they get turned into a 1-dimensional vector.
+        :return:
+        """
+        if flat:
+            shape = arr.shape[:2]
+        else:
+            shape = arr.shape
+            if len(shape) < 3:
+                shape = (*shape, 1)
+
+        if self.sampling_strategy == SamplingStrategy.SCRAMBLE:
+            shape = (shape[0] * shape[1], *shape[2:])
+
+        return arr.view(shape)
 
     def index_samples(self, batch_inds: TensorIndex, samples: TPyTree) -> TPyTree:
+        if isinstance(batch_inds, slice):
+            state_idx = slice.start or 0
+        elif isinstance(batch_inds, th.Tensor):
+            state_idx = batch_inds[0].item()
+        else:
+            raise NotImplementedError(f"Index type {type(batch_inds)} not implemented.")
+
         return ot.tree_map(
-            lambda arr, to_flatten: self.to_device(self.swap_and_flatten(arr, to_flatten)[batch_inds]),
+            lambda arr, to_flatten, idx: self.to_device(self._maybe_flatten_batch_and_time(arr, to_flatten)[idx]),
             samples,
             ot.tree_broadcast_prefix(self.TO_FLATTEN, samples, namespace=NS),
+            ot.tree_broadcast_prefix(self._tree_indices(batch_inds, state_idx), samples, namespace=NS),
             namespace=NS,
         )
 
@@ -621,6 +664,17 @@ class RolloutBuffer(BaseBuffer):
         returns=True,
         recurrent_states=False,
     )
+
+    def _tree_indices(batch_inds: TensorIndex, state_idx: int) -> RolloutBufferSamples:
+        return RolloutBufferSamples(
+            observations=batch_inds,
+            actions=batch_inds,
+            old_values=batch_inds,
+            old_log_prob=batch_inds,
+            advantages=batch_inds,
+            returns=batch_inds,
+            recurrent_states=state_idx,
+        )
 
     def _get_samples(
         self,
@@ -878,6 +932,7 @@ class DictRolloutBuffer(RolloutBuffer):
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
+        sampling_strategy: Union[Literal["auto", "scramble", "truncate"], SamplingStrategy] = "auto",
     ):
         super(RolloutBuffer, self).__init__(
             buffer_size, observation_space, action_space, recurrent_state_example, device, n_envs=n_envs
@@ -887,6 +942,7 @@ class DictRolloutBuffer(RolloutBuffer):
 
         self.gae_lambda = gae_lambda
         self.gamma = gamma
+        self._assign_sampling_strategy(sampling_strategy)
 
         self.observations = {}
         for key, obs_input_shape in self.obs_shape.items():
@@ -976,21 +1032,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self,
         batch_size: Optional[int] = None,
     ) -> Generator[DictRolloutBufferSamples, None, None]:  # type: ignore[signature-mismatch] #FIXME
-        assert self.full, ""
-
-        # Return everything, don't create minibatches
-        if batch_size is None:
-            batch_size = self.buffer_size * self.n_envs
-
-        if batch_size == self.buffer_size * self.n_envs:
-            yield self._get_samples(slice(None))
-        else:
-            indices = th.randperm(self.buffer_size * self.n_envs)
-            start_idx = 0
-
-            while start_idx < self.buffer_size * self.n_envs:
-                yield self._get_samples(indices[start_idx : start_idx + batch_size])
-                start_idx += batch_size
+        return super().get(batch_size=batch_size)  # type: ignore
 
     TO_FLATTEN = DictRolloutBufferSamples(
         observations=False,
@@ -1001,6 +1043,17 @@ class DictRolloutBuffer(RolloutBuffer):
         returns=True,
         recurrent_states=False,
     )
+
+    def _tree_indices(batch_inds: TensorIndex, state_idx: int) -> DictRolloutBufferSamples:
+        return DictRolloutBufferSamples(
+            observations=batch_inds,
+            actions=batch_inds,
+            old_values=batch_inds,
+            old_log_prob=batch_inds,
+            advantages=batch_inds,
+            returns=batch_inds,
+            recurrent_states=state_idx,
+        )
 
     def _get_samples(  # type: ignore[override]
         self,

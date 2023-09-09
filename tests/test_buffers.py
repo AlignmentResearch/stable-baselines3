@@ -1,3 +1,5 @@
+import contextlib
+
 import gymnasium as gym
 import numpy as np
 import optree as ot
@@ -5,7 +7,7 @@ import pytest
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer
+from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, SamplingStrategy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
@@ -169,3 +171,35 @@ def test_device_buffer(replay_buffer_cls, device):
     buffer._get_samples(slice(2))
     buffer._get_samples(slice(2, 4))
     buffer._get_samples(slice(0, 4, 2))
+
+
+@pytest.mark.parametrize("replay_buffer_cls", [RolloutBuffer, DictRolloutBuffer])
+@pytest.mark.parametrize("sampling_strategy", list(SamplingStrategy))
+@pytest.mark.parametrize("recurrent", [True, False])
+def test_shape_of_get_sample(replay_buffer_cls, sampling_strategy, recurrent):
+    env = {
+        RolloutBuffer: DummyEnv,
+        DictRolloutBuffer: DummyDictEnv,
+        ReplayBuffer: DummyEnv,
+        DictReplayBuffer: DummyDictEnv,
+    }[replay_buffer_cls]
+    env = make_vec_env(env)
+
+    if recurrent:
+        recurrent_state_example = {"a": {"b": th.rand((4,))}}
+    else:
+        recurrent_state_example = ()
+
+    if recurrent and sampling_strategy == SamplingStrategy.SCRAMBLE:
+        context = pytest.raises(ValueError, match="The 'SCRAMBLE' sampling strategy breaks")
+    else:
+        context = contextlib.nullcontext()
+
+    with context:
+        buffer = replay_buffer_cls(
+            100,
+            env.observation_space,
+            env.action_space,
+            recurrent_state_example=recurrent_state_example,
+            sampling_strategy=sampling_strategy,
+        )
