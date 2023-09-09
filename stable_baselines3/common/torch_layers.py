@@ -66,6 +66,33 @@ class FlattenExtractor(BaseFeaturesExtractor):
         return OutAndState(self.flatten(observations), state)
 
 
+class GRUExtractor(FlattenExtractor):
+    def __init__(self, observation_space: gym.Space, features_dim: int = 64, num_layers: int = 1) -> None:
+        super().__init__(observation_space)
+        self.rnn = nn.GRU(
+            input_size=observation_space.shape[0], hidden_size=features_dim, num_layers=num_layers, batch_first=False
+        )
+
+    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+        if n_envs is None:
+            shape = (self.rnn.num_layers, self.rnn.hidden_size)
+        else:
+            shape = (self.rnn.num_layers, n_envs, self.rnn.hidden_size)
+        return torch.zeros(shape, device=self.rnn.weight_ih.device)
+
+    def forward(self, observations: th.Tensor, state: th.Tensor) -> OutAndState[th.Tensor]:
+        if observations.ndim == 2:
+            # Add a time dimension
+            observations = observations.unsqueeze(0)
+        # Forward through RNN
+        features, new_state = self.rnn(observations, state)
+
+        if observations.ndim == 2:
+            # Remove time dimension
+            features = features.squeeze(0)
+        return OutAndState(features, new_state)
+
+
 class NatureCNN(BaseFeaturesExtractor):
     """
     CNN from DQN Nature paper:
