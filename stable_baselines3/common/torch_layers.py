@@ -69,18 +69,20 @@ class FlattenExtractor(BaseFeaturesExtractor):
 class GRUExtractor(FlattenExtractor):
     def __init__(self, observation_space: gym.Space, features_dim: int = 64, num_layers: int = 1) -> None:
         super().__init__(observation_space)
-        self.rnn = nn.GRU(
-            input_size=observation_space.shape[0], hidden_size=features_dim, num_layers=num_layers, batch_first=False
-        )
+        flattened_obs_dim = self.features_dim
+        self.rnn = nn.GRU(input_size=flattened_obs_dim, hidden_size=features_dim, num_layers=num_layers, batch_first=False)
+        # Update because now we're using the output of the RNN
+        self._features_dim = features_dim
 
-    def initial_state(self, n_envs: Optional[int] = None) -> PyTree:
+    def initial_state(self, n_envs: Optional[int] = None) -> th.Tensor:  # type: ignore[override]
+        shape: Tuple[int, ...]
         if n_envs is None:
             shape = (self.rnn.num_layers, self.rnn.hidden_size)
         else:
             shape = (self.rnn.num_layers, n_envs, self.rnn.hidden_size)
-        return torch.zeros(shape, device=self.rnn.weight_ih.device)
+        return th.zeros(shape, device=self.rnn.weight_ih.device)  # type: ignore
 
-    def forward(self, observations: th.Tensor, state: th.Tensor) -> OutAndState[th.Tensor]:
+    def forward(self, observations: th.Tensor, state: th.Tensor) -> OutAndState[th.Tensor]:  # type: ignore[override]
         if observations.ndim == 2:
             # Add a time dimension
             observations = observations.unsqueeze(0)
