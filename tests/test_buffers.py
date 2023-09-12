@@ -1,4 +1,5 @@
 import contextlib
+import math
 
 import gymnasium as gym
 import numpy as np
@@ -10,7 +11,7 @@ from gymnasium import spaces
 from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, SamplingStrategy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE, tree_empty
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples, ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
@@ -183,10 +184,10 @@ def test_shape_of_get_sample(replay_buffer_cls, sampling_strategy, recurrent):
         ReplayBuffer: DummyEnv,
         DictReplayBuffer: DummyDictEnv,
     }[replay_buffer_cls]
-    env = make_vec_env(env)
+    env = make_vec_env(env, n_envs=2)
 
     if recurrent:
-        recurrent_state_example = {"a": {"b": th.rand((4,))}}
+        recurrent_state_example = {"a": {"b": th.zeros((4,))}}
     else:
         recurrent_state_example = ()
 
@@ -197,9 +198,70 @@ def test_shape_of_get_sample(replay_buffer_cls, sampling_strategy, recurrent):
 
     with context:
         buffer = replay_buffer_cls(
-            100,
+            30,
             env.observation_space,
             env.action_space,
             recurrent_state_example=recurrent_state_example,
             sampling_strategy=sampling_strategy,
+            n_envs=env.num_envs,
         )
+    if not isinstance(context, contextlib.nullcontext):
+        return
+
+    zero_action_nenvs = th.zeros((env.num_envs, *env.action_space.shape))
+
+    zero_obs_nenvs = obs = ot.tree_map(lambda x: th.zeros_like(x), env.reset(), namespace=OT_NAMESPACE)
+    for i in range(buffer.buffer_size):
+        action = zero_action_nenvs + i
+        next_obs, reward, done, info = env.step(action)
+
+        recurrent_states = {"a": {"b": th.zeros((env.num_envs, 4)) + i}}
+        episode_start, values, log_prob = th.zeros(env.num_envs) + i, th.zeros(env.num_envs) + i, th.zeros(env.num_envs) + i
+
+        buffer.add(obs, action, reward, episode_start, values, log_prob, recurrent_states=recurrent_states)
+        obs = next_obs
+
+    for batch_size in [None, 1, 2, 4, 5, 7]:
+        context = contextlib.nullcontext()
+        if sampling_strategy == SamplingStrategy.TRUNCATE:
+            if batch_size == 1:
+                context = pytest.raises(ValueError, match=f"The '{sampling_strategy}' sampling strategy requires")
+            if batch_size == 4:
+                context = pytest.raises(ValueError, match="The batch size must evenly divide buffer_size ")
+        if batch_size == 7:
+            context = pytest.raises(ValueError, match="The batch size must evenly divide buffer_size*n_envs")
+
+        # First check whether the error comes up
+        with context:
+            buffer.get(batch_size)
+
+        with context:
+            # Check that the shapes are correct
+            for samples in buffer.get(batch_size):
+                if batch_size is None:
+                    expected_shape = (buffer.buffer_size, env.num_envs)
+                else:
+                    expected_shape = (batch_size, env.num_envs)
+
+                if sampling_strategy == SamplingStrategy.SCRAMBLE:
+                    expected_shape = (math.prod(expected_shape),)
+
+                assert samples.actions.shape == (*expected_shape, *zero_action_nenvs.shape[1:])
+                assert samples.old_values.shape == (*expected_shape,)
+                assert samples.old_log_prob.shape == (*expected_shape,)
+                assert samples.advantages.shape == (*expected_shape,)
+                assert samples.returns.shape == (*expected_shape,)
+
+                def _assert_sample_shape(sample, zero_nenvs):
+                    assert sample.shape == (*expected_shape, *zero_nenvs.shape[1:])
+
+                ot.tree_map(_assert_sample_shape, samples.observations, zero_obs_nenvs, namespace=OT_NAMESPACE)
+
+                if sampling_strategy == SamplingStrategy.SCRAMBLE:
+                    assert tree_empty(samples.recurrent_states)
+
+                # No batch component for state
+                def _assert_state_shape(sample, recurrent_example):
+                    assert sample.shape == (env.num_envs, *recurrent_example.shape)
+
+                ot.tree_map(_assert_state_shape, samples.recurrent_states, recurrent_state_example, namespace=OT_NAMESPACE)

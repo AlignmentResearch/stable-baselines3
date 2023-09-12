@@ -596,11 +596,18 @@ class RolloutBuffer(BaseBuffer):
         if batch_size is None:
             batch_size = self.buffer_size * self.n_envs
 
-        if self.sampling_strategy != SamplingStrategy.SCRAMBLE and batch_size % self.n_envs != 0:
+        if (self.buffer_size * self.n_envs) % batch_size != 0:
             raise ValueError(
-                f"The '{self.sampling_strategy}' sampling strategy requires the batch size to be a multiple of the "
-                f"number of environments (n_envs={self.n_envs}), but batch_size={batch_size}."
+                f"The batch size must evenly divide buffer_size*n_envs (buffer_size={self.buffer_size}, "
+                f"n_envs={self.n_envs}), but batch_size={batch_size}."
             )
+
+        if self.sampling_strategy == SamplingStrategy.TRUNCATE:
+            if batch_size % self.n_envs != 0 or batch_size < self.n_envs:
+                raise ValueError(
+                    f"The '{self.sampling_strategy}' sampling strategy requires the batch size to be a multiple of the "
+                    f"number of environments (n_envs={self.n_envs}), but batch_size={batch_size}."
+                )
 
         if batch_size == self.buffer_size * self.n_envs:
             # All strategies are the same when the whole buffer is to be returned
@@ -641,7 +648,7 @@ class RolloutBuffer(BaseBuffer):
 
     def index_samples(self, batch_inds: TensorIndex, samples: TPyTree) -> TPyTree:
         if isinstance(batch_inds, slice):
-            state_idx = slice.start or 0
+            state_idx = batch_inds.start or 0
         elif isinstance(batch_inds, th.Tensor):
             state_idx = batch_inds[0].item()
         else:
@@ -665,6 +672,7 @@ class RolloutBuffer(BaseBuffer):
         recurrent_states=False,
     )
 
+    @staticmethod
     def _tree_indices(batch_inds: TensorIndex, state_idx: int) -> RolloutBufferSamples:
         return RolloutBufferSamples(
             observations=batch_inds,
@@ -1044,6 +1052,7 @@ class DictRolloutBuffer(RolloutBuffer):
         recurrent_states=False,
     )
 
+    @staticmethod
     def _tree_indices(batch_inds: TensorIndex, state_idx: int) -> DictRolloutBufferSamples:
         return DictRolloutBufferSamples(
             observations=batch_inds,
