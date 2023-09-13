@@ -1,10 +1,9 @@
-import operator
 from typing import Any, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
-import torch as th
 import pytest
+import torch as th
 from gymnasium import spaces
 
 from stable_baselines3 import SAC, TD3, HerReplayBuffer

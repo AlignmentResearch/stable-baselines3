@@ -1,6 +1,6 @@
 import numpy as np
-from gymnasium import spaces
 import torch as th
+from gymnasium import spaces
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecEnv, VecExtractDictObs, VecMonitor
@@ -18,7 +18,6 @@ class DictObsVecEnv(VecEnv):
         self.n_steps = 0
         self.max_steps = 5
         self.render_mode = None
-
 
     def step_async(self, actions):
         self.actions = actions

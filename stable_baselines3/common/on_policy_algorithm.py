@@ -179,7 +179,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 else:
                     # Otherwise, clip the actions to avoid out of bound error
                     # as we are sampling from an unbounded Gaussian distribution
-                    clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
+                    clipped_actions = th.clip(
+                        actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high)
+                    )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 

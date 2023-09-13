@@ -9,7 +9,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.envs import IdentityEnv
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.vec_env.util import obs_as_tensor, obs_as_np
+from stable_baselines3.common.vec_env.util import obs_as_np, obs_as_tensor
 
 MODEL_LIST = [
     PPO,

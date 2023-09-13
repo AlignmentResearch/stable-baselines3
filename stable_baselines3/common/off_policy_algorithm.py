@@ -6,7 +6,6 @@ import warnings
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 

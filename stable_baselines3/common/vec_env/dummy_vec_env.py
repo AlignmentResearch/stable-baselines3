@@ -4,12 +4,11 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, cast
 
 import gymnasium as gym
-import numpy as np
 import torch as th
 
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvIndices, VecEnvObs, VecEnvStepReturn
 from stable_baselines3.common.vec_env.patch_gym import _patch_env
-from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_space_info, obs_as_tensor, obs_as_np
+from stable_baselines3.common.vec_env.util import copy_obs_dict, dict_to_obs, obs_as_np, obs_as_tensor, obs_space_info
 
 
 class DummyVecEnv(VecEnv):
