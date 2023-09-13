@@ -293,11 +293,11 @@ def test_episode_termination_dict():
     space = spaces.Dict({"key1": spaces.Box(0, 255, (H, W, 3), dtype=np.uint8), "key2": spaces.Box(-1, 1, (4, 5))})
     stacked_observations = StackedObservations(NUM_ENVS, N_STACK, space, channels_order={"key1": "first", "key2": "last"})
     observations_1 = obs_as_tensor(
-        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}, None
     )
     stacked_observations.reset(observations_1)
     observations_2 = obs_as_tensor(
-        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}, None
     )
     dones = th.zeros((NUM_ENVS,), dtype=bool)
     infos = [{} for _ in range(NUM_ENVS)]
@@ -306,7 +306,7 @@ def test_episode_termination_dict():
     infos[1]["terminal_observation"] = terminal_observation  # episode termination in env1
     dones[1] = True
     observations_3 = obs_as_tensor(
-        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}, None
     )
     stacked_obs, infos = stacked_observations.update(observations_3, dones, infos)
 
