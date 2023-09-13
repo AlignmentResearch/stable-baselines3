@@ -223,7 +223,7 @@ def test_reset_update_dict():
     space = spaces.Dict({"key1": spaces.Box(0, 255, (H, W, C), dtype=np.uint8), "key2": spaces.Box(-1, 1, (4, 5))})
     stacked_observations = StackedObservations(NUM_ENVS, N_STACK, space, channels_order={"key1": "first", "key2": "last"})
     observations_1 = obs_as_tensor(
-        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}, None
     )
     stacked_obs = stacked_observations.reset(observations_1)
     assert isinstance(stacked_obs, dict)
@@ -232,7 +232,7 @@ def test_reset_update_dict():
     assert stacked_obs["key1"].dtype == as_torch_dtype(space["key1"].dtype)
     assert stacked_obs["key2"].dtype == as_torch_dtype(space["key2"].dtype)
     observations_2 = obs_as_tensor(
-        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}, None
     )
     dones = np.zeros((NUM_ENVS,), dtype=bool)
     infos = [{} for _ in range(NUM_ENVS)]
