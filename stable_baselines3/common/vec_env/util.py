@@ -39,17 +39,21 @@ def as_numpy_dtype(dtype: Union[th.dtype, np.dtype]) -> np.dtype:
 
 
 @overload
-def obs_as_tensor(obs: Union[np.ndarray, th.Tensor], device: th.device) -> th.Tensor:
+def obs_as_tensor(obs: Union[np.ndarray, th.Tensor], device: Optional[th.device]) -> th.Tensor:
     ...
 
 
 @overload
-def obs_as_tensor(obs: Union[Tuple[np.ndarray, ...], Tuple[th.Tensor, ...]], device: th.device) -> Tuple[th.Tensor, ...]:
+def obs_as_tensor(
+    obs: Union[Tuple[np.ndarray, ...], Tuple[th.Tensor, ...]], device: Optional[th.device]
+) -> Tuple[th.Tensor, ...]:
     ...
 
 
 @overload
-def obs_as_tensor(obs: Union[Dict[str, np.ndarray], Dict[str, th.Tensor]], device: th.device) -> Dict[str, th.Tensor]:
+def obs_as_tensor(
+    obs: Union[Dict[str, np.ndarray], Dict[str, th.Tensor]], device: Optional[th.device]
+) -> Dict[str, th.Tensor]:
     ...
 
 
