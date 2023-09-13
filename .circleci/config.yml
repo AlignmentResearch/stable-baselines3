@@ -19,6 +19,9 @@ workflows:
       - format-and-mypy:
           context:
             - ghcr-auth
+      - pytype:
+          context:
+            - ghcr-auth
       - py-tests:
           context:
             - ghcr-auth
@@ -43,7 +46,18 @@ jobs:
       - run: isort --profile black --check .
       - run: black --check .
       - run: ruff check .
-      - run: mypy .
+      - run: make mypy
+  pytype:
+    docker:
+      - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
+        auth:
+          username: "$GHCR_DOCKER_USER"
+          password: "$GHCR_DOCKER_TOKEN"
+    resource_class: large
+    working_directory: /workspace/third_party/stable-baselines3
+    steps:
+      - checkout
+      - run: make pytype
   py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>

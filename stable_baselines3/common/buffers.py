@@ -5,7 +5,6 @@ from typing import Any, Dict, Generator, List, Optional, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
-
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
@@ -332,7 +331,7 @@ class ReplayBuffer(BaseBuffer):
             batch_inds = th.randint(0, self.pos, size=(batch_size,))
         return self._get_samples(batch_inds, env=env)
 
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+    def _get_samples(self, batch_inds: Union[slice, th.Tensor], env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
         # Sample randomly the env idx
         env_indices = th.randint(0, high=self.n_envs, size=(len(batch_inds),), device=self.buffer_device)
 
@@ -537,7 +536,7 @@ class RolloutBuffer(BaseBuffer):
 
     def _get_samples(
         self,
-        batch_inds: np.ndarray,
+        batch_inds: Union[slice, th.Tensor],
         env: Optional[VecNormalize] = None,
     ) -> RolloutBufferSamples:  # type: ignore[signature-mismatch] #FIXME
         data = (

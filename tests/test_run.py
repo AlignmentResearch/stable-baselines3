@@ -1,7 +1,6 @@
 import gymnasium as gym
 import numpy as np
 import pytest
-
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
@@ -166,7 +165,7 @@ def test_offpolicy_multi_env(model_class):
     def make_env():
         env = gym.make(env_id)
         # to check that the code handling timeouts runs
-        env = gym.wrappers.TimeLimit(env, 50)
+        env = gym.wrappers.TimeLimit(env, 50)  # type: ignore[module-attr]
         return env
 
     env = make_vec_env(make_env, n_envs=2)
