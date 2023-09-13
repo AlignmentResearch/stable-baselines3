@@ -46,7 +46,7 @@ jobs:
       - run: isort --profile black --check .
       - run: black --check .
       - run: ruff check .
-      - run: make mypy
+      - run: mypy .
   pytype:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
@@ -57,7 +57,7 @@ jobs:
     working_directory: /workspace/third_party/stable-baselines3
     steps:
       - checkout
-      - run: make pytype
+      - run: pytype -j 4
   py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
