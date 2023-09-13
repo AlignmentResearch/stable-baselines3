@@ -1,3 +1,4 @@
+import math
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -165,7 +166,7 @@ class SAC(OffPolicyAlgorithm):
         # Target entropy is used when learning the entropy coefficient
         if self.target_entropy == "auto":
             # automatically set target entropy if needed
-            self.target_entropy = float(-np.prod(self.env.action_space.shape).astype(np.float32))  # type: ignore
+            self.target_entropy = float(-math.prod(self.env.action_space.shape))  # type: ignore
         else:
             # Force conversion
             # this will also throw an error for unexpected string

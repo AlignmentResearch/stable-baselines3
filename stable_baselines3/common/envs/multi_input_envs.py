@@ -4,7 +4,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from stable_baselines3.common.type_aliases import GymStepReturn
+from stable_baselines3.common.type_aliases import GymObs, GymStepReturn
 
 
 class SimpleMultiObsEnv(gym.Env):
@@ -156,7 +156,8 @@ class SimpleMultiObsEnv(gym.Env):
 
         self.log = f"Went {self.action2str[action]} in state {prev_state}, got to state {self.state}"
 
-        return self.get_state_mapping(), reward, terminated, truncated, {"got_to_end": got_to_end}
+        obs: GymObs = self.get_state_mapping()  # type: ignore[assignment]
+        return obs, reward, terminated, truncated, {"got_to_end": got_to_end}
 
     def render(self, mode: str = "human") -> None:
         """

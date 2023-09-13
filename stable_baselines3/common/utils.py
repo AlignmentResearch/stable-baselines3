@@ -24,6 +24,14 @@ except ImportError:
 from stable_baselines3.common.logger import Logger, configure
 from stable_baselines3.common.type_aliases import GymEnv, Schedule, TensorDict, TrainFreq, TrainFrequencyUnit
 
+def nbytes(t: th.Tensor) -> int:
+    """
+    Get the number of bytes of a PyTorch tensor.
+
+    :param t: PyTorch tensor
+    :return: the number of bytes of the tensor
+    """
+    return t.element_size() * t.numel()
 
 def set_random_seed(seed: int, using_cuda: bool = False) -> None:
     """
@@ -46,7 +54,7 @@ def set_random_seed(seed: int, using_cuda: bool = False) -> None:
 
 
 # From stable baselines
-def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+def explained_variance(y_pred: th.Tensor, y_true: th.Tensor, unbiased: bool=True) -> th.Tensor:
     """
     Computes fraction of variance that ypred explains about y.
     Returns 1 - Var[y-ypred] / Var[y]
@@ -58,11 +66,13 @@ def explained_variance(y_pred: np.ndarray, y_true: np.ndarray) -> np.ndarray:
 
     :param y_pred: the prediction
     :param y_true: the expected value
-    :return: explained variance of ypred and y
+    :param unbiased: compute unbiased variances with Bessel's correction. (The resulting estimation of the explained
+        variance is still biased.)
+    :return: explained variance of y_pred and y
     """
     assert y_true.ndim == 1 and y_pred.ndim == 1
-    var_y = np.var(y_true)
-    return np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+    var_y = th.var(y_true, unbiased=unbiased)
+    return th.as_tensor(th.nan, device=var_y.device) if var_y == 0 else 1 - th.var(y_true - y_pred, unbiased=unbiased) / var_y
 
 
 def update_learning_rate(optimizer: th.optim.Optimizer, learning_rate: float) -> None:
@@ -471,7 +481,7 @@ def polyak_update(
             th.add(target_param.data, param.data, alpha=tau, out=target_param.data)
 
 
-def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.device) -> Union[th.Tensor, TensorDict]:
+def obs_as_tensor(obs: Union[th.Tensor, np.ndarray, Dict[str, th.Tensor], Dict[str, np.ndarray]], device: th.device) -> Union[th.Tensor, TensorDict]:
     """
     Moves the observation to the given device.
 
@@ -479,12 +489,15 @@ def obs_as_tensor(obs: Union[np.ndarray, Dict[str, np.ndarray]], device: th.devi
     :param device: PyTorch device
     :return: PyTorch tensor of the observation on a desired device.
     """
-    if isinstance(obs, np.ndarray):
+    if isinstance(obs, (th.Tensor, np.ndarray)):
         return th.as_tensor(obs, device=device)
     elif isinstance(obs, dict):
         return {key: th.as_tensor(_obs, device=device) for (key, _obs) in obs.items()}
-    else:
-        raise Exception(f"Unrecognized type of observation {type(obs)}")
+
+    try:
+        return th.as_tensor(obs, device=device)
+    except Exception as e:
+        raise Exception(f"Unrecognized type of observation {type(obs)}. Raised {e}")
 
 
 def should_collect_more_steps(

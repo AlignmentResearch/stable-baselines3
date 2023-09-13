@@ -89,7 +89,7 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     env.reset()
     obs = env.get_original_obs()
     for _ in range(100):
-        action = env.action_space.sample()
+        action = th.as_tensor(env.action_space.sample())
         _, _, done, info = env.step(action)
         next_obs = env.get_original_obs()
         reward = env.get_original_reward()
@@ -127,10 +127,11 @@ def test_device_buffer(replay_buffer_cls, device):
     # Interract and store transitions
     obs = env.reset()
     for _ in range(100):
-        action = env.action_space.sample()
+        action = th.as_tensor(env.action_space.sample())
+
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-            episode_start, values, log_prob = np.zeros(1), th.zeros(1), th.ones(1)
+            episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(obs, action, reward, episode_start, values, log_prob)
         else:
             buffer.add(obs, next_obs, action, reward, done, info)

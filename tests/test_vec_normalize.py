@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+import torch as th
 import pytest
 from gymnasium import spaces
 
@@ -27,7 +28,7 @@ class DummyRewardEnv(gym.Env):
     def __init__(self, return_reward_idx=0):
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=np.array([-1.0]), high=np.array([1.0]))
-        self.returned_rewards = [0, 1, 3, 4]
+        self.returned_rewards = th.tensor([0, 1, 3, 4])
         self.return_reward_idx = return_reward_idx
         self.t = self.return_reward_idx
 
@@ -37,13 +38,13 @@ class DummyRewardEnv(gym.Env):
         returned_value = self.returned_rewards[index]
         terminated = False
         truncated = self.t == len(self.returned_rewards)
-        return np.array([returned_value]), returned_value, terminated, truncated, {}
+        return returned_value.unsqueeze(dim=0), returned_value, terminated, truncated, {}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None):
         if seed is not None:
             super().reset(seed=seed)
         self.t = 0
-        return np.array([self.returned_rewards[self.return_reward_idx]]), {}
+        return self.returned_rewards[self.return_reward_idx].unsqueeze(dim=0), {}
 
 
 class DummyDictEnv(gym.Env):
@@ -107,16 +108,16 @@ class DummyMixedDictEnv(gym.Env):
 
 def allclose(obs_1, obs_2):
     """
-    Generalized np.allclose() to work with dict spaces.
+    Generalized th.allclose() to work with dict spaces.
     """
     if isinstance(obs_1, dict):
         all_close = True
         for key in obs_1.keys():
-            if not np.allclose(obs_1[key], obs_2[key]):
+            if not th.allclose(obs_1[key], obs_2[key]):
                 all_close = False
                 break
         return all_close
-    return np.allclose(obs_1, obs_2)
+    return th.allclose(obs_1, obs_2)
 
 
 def make_env():
@@ -138,12 +139,14 @@ def make_image_env():
 def check_rms_equal(rmsa, rmsb):
     if isinstance(rmsa, dict):
         for key in rmsa.keys():
-            assert np.all(rmsa[key].mean == rmsb[key].mean)
-            assert np.all(rmsa[key].var == rmsb[key].var)
+            assert th.all(rmsa[key].mean == rmsb[key].mean)
+            assert th.all(rmsa[key].var == rmsb[key].var)
+            # Use np.all, they may be floats
             assert np.all(rmsa[key].count == rmsb[key].count)
     else:
-        assert np.all(rmsa.mean == rmsb.mean)
-        assert np.all(rmsa.var == rmsb.var)
+        assert th.all(rmsa.mean == rmsb.mean)
+        assert th.all(rmsa.var == rmsb.var)
+        # Use np.all, they may be floats
         assert np.all(rmsa.count == rmsb.count)
 
 
@@ -159,7 +162,7 @@ def check_vec_norm_equal(norma, normb):
     assert norma.norm_obs == normb.norm_obs
     assert norma.norm_reward == normb.norm_reward
 
-    assert np.all(norma.returns == normb.returns)
+    assert th.all(norma.returns == normb.returns)
     assert norma.gamma == normb.gamma
     assert norma.epsilon == normb.epsilon
     assert norma.training == normb.training
@@ -196,51 +199,51 @@ def _make_warmstart_dict_env(**kwargs):
 def test_runningmeanstd():
     """Test RunningMeanStd object"""
     for x_1, x_2, x_3 in [
-        (np.random.randn(3), np.random.randn(4), np.random.randn(5)),
-        (np.random.randn(3, 2), np.random.randn(4, 2), np.random.randn(5, 2)),
+        (th.randn(3), th.randn(4), th.randn(5)),
+        (th.randn(3, 2), th.randn(4, 2), th.randn(5, 2)),
     ]:
         rms = RunningMeanStd(epsilon=0.0, shape=x_1.shape[1:])
 
-        x_cat = np.concatenate([x_1, x_2, x_3], axis=0)
-        moments_1 = [x_cat.mean(axis=0), x_cat.var(axis=0)]
+        x_cat = th.cat([x_1, x_2, x_3], axis=0)
+        moments_1 = th.stack([x_cat.mean(axis=0), x_cat.var(axis=0, unbiased=False)]).to(th.float64)
         rms.update(x_1)
         rms.update(x_2)
         rms.update(x_3)
-        moments_2 = [rms.mean, rms.var]
+        moments_2 = th.stack([rms.mean, rms.var])
 
-        assert np.allclose(moments_1, moments_2)
+        assert th.allclose(moments_1, moments_2)
 
 
 def test_combining_stats():
-    np.random.seed(4)
+    th.manual_seed(4)
     for shape in [(1,), (3,), (3, 4)]:
         values = []
         rms_1 = RunningMeanStd(shape=shape)
         rms_2 = RunningMeanStd(shape=shape)
         rms_3 = RunningMeanStd(shape=shape)
         for _ in range(15):
-            value = np.random.randn(*shape)
+            value = th.randn(*shape)
             rms_1.update(value)
             rms_3.update(value)
             values.append(value)
         for _ in range(19):
             # Shift the values
-            value = np.random.randn(*shape) + 1.0
+            value = th.randn(*shape) + 1.0
             rms_2.update(value)
             rms_3.update(value)
             values.append(value)
         rms_1.combine(rms_2)
-        assert np.allclose(rms_3.mean, rms_1.mean)
-        assert np.allclose(rms_3.var, rms_1.var)
+        assert th.allclose(rms_3.mean, rms_1.mean)
+        assert th.allclose(rms_3.var, rms_1.var)
         rms_4 = rms_3.copy()
-        assert np.allclose(rms_4.mean, rms_3.mean)
-        assert np.allclose(rms_4.var, rms_3.var)
-        assert np.allclose(rms_4.count, rms_3.count)
+        assert th.allclose(rms_4.mean, rms_3.mean)
+        assert th.allclose(rms_4.var, rms_3.var)
+        assert th.allclose(th.as_tensor(rms_4.count), th.as_tensor(rms_3.count))
         assert id(rms_4.mean) != id(rms_3.mean)
         assert id(rms_4.var) != id(rms_3.var)
-        x_cat = np.concatenate(values, axis=0)
-        assert np.allclose(x_cat.mean(axis=0), rms_4.mean)
-        assert np.allclose(x_cat.var(axis=0), rms_4.var)
+        x_cat = th.cat(values, axis=0).to(th.float64)
+        assert th.allclose(x_cat.mean(dim=0), rms_4.mean)
+        assert th.allclose(x_cat.var(dim=0, unbiased=False), rms_4.var)
 
 
 def test_obs_rms_vec_normalize():
@@ -248,17 +251,17 @@ def test_obs_rms_vec_normalize():
     env = DummyVecEnv(env_fns)
     env = VecNormalize(env)
     env.reset()
-    assert np.allclose(env.obs_rms.mean, 0.5, atol=1e-4)
-    assert np.allclose(env.ret_rms.mean, 0.0, atol=1e-4)
+    assert np.allclose(env.obs_rms.mean.item(), 0.5, atol=1e-4)
+    assert np.allclose(env.ret_rms.mean.item(), 0.0, atol=1e-4)
     env.step([env.action_space.sample() for _ in range(len(env_fns))])
-    assert np.allclose(env.obs_rms.mean, 1.25, atol=1e-4)
-    assert np.allclose(env.ret_rms.mean, 2, atol=1e-4)
+    assert np.allclose(env.obs_rms.mean.item(), 1.25, atol=1e-4)
+    assert np.allclose(env.ret_rms.mean.item(), 2, atol=1e-4)
 
     # Check convergence to true mean
     for _ in range(3000):
         env.step([env.action_space.sample() for _ in range(len(env_fns))])
-    assert np.allclose(env.obs_rms.mean, 2.0, atol=1e-3)
-    assert np.allclose(env.ret_rms.mean, 5.688, atol=1e-3)
+    assert np.allclose(env.obs_rms.mean.item(), 2.0, atol=1e-3)
+    assert np.allclose(env.ret_rms.mean.item(), 5.688, atol=1e-3)
 
 
 @pytest.mark.parametrize("make_gym_env", [make_env, make_dict_env, make_image_env])
@@ -278,10 +281,10 @@ def test_vec_env(tmp_path, make_gym_env):
         obs, rew, done, _ = norm_venv.step(actions)
         if isinstance(obs, dict):
             for key in obs.keys():
-                assert np.max(np.abs(obs[key])) <= clip_obs
+                assert th.max(th.abs(obs[key])) <= clip_obs
         else:
-            assert np.max(np.abs(obs)) <= clip_obs
-        assert np.max(np.abs(rew)) <= clip_reward
+            assert th.max(th.abs(obs)) <= clip_obs
+        assert th.max(th.abs(rew)) <= clip_reward
 
     path = tmp_path / "vec_normalize"
     norm_venv.save(path)
@@ -309,13 +312,13 @@ def test_get_original():
         rewards = rewards[0]
         orig_rewards = venv.get_original_reward()[0]
 
-        assert np.all(orig_rewards == 1)
+        assert th.all(orig_rewards == 1)
         assert orig_obs.shape == obs.shape
         assert orig_rewards.dtype == rewards.dtype
-        assert not np.array_equal(orig_obs, obs)
-        assert not np.array_equal(orig_rewards, rewards)
-        np.testing.assert_allclose(venv.normalize_obs(orig_obs), obs)
-        np.testing.assert_allclose(venv.normalize_reward(orig_rewards), rewards)
+        assert not th.equal(orig_obs, obs)
+        assert not th.equal(orig_rewards, rewards)
+        assert th.allclose(venv.normalize_obs(orig_obs), obs)
+        assert th.allclose(venv.normalize_reward(orig_rewards), rewards)
 
 
 def test_get_original_dict():
@@ -333,19 +336,19 @@ def test_get_original_dict():
         assert orig_rewards.dtype == rewards.dtype
 
         assert not allclose(orig_obs, obs)
-        assert not np.array_equal(orig_rewards, rewards)
+        assert not th.equal(orig_rewards, rewards)
         assert allclose(venv.normalize_obs(orig_obs), obs)
-        np.testing.assert_allclose(venv.normalize_reward(orig_rewards), rewards)
+        assert th.allclose(venv.normalize_reward(orig_rewards), rewards)
 
 
 def test_normalize_external():
     venv = _make_warmstart_cartpole()
 
-    rewards = np.array([1, 1])
+    rewards = th.tensor([1, 1])
     norm_rewards = venv.normalize_reward(rewards)
     assert norm_rewards.shape == rewards.shape
     # Episode return is almost always >= 1 in CartPole. So reward should shrink.
-    assert np.all(norm_rewards < 1)
+    assert th.all(norm_rewards < 1)
 
 
 def test_normalize_dict_selected_keys():
@@ -356,11 +359,11 @@ def test_normalize_dict_selected_keys():
         orig_obs = venv.get_original_obs()
 
         # "observation" is expected to be normalized
-        np.testing.assert_array_compare(operator.__ne__, obs["observation"], orig_obs["observation"])
+        assert not th.equal(obs["observation"], orig_obs["observation"])
         assert allclose(venv.normalize_obs(orig_obs), obs)
 
         # other keys are expected to be presented "as is"
-        np.testing.assert_array_equal(obs["achieved_goal"], orig_obs["achieved_goal"])
+        assert th.equal(obs["achieved_goal"], orig_obs["achieved_goal"])
 
 
 def test_her_normalization():
@@ -444,10 +447,10 @@ def test_sync_vec_normalize(make_env):
 
     # Check that unnormalized reward is same as original reward
     original_latest_reward = env.get_original_reward()
-    assert np.allclose(original_latest_reward, env.unnormalize_reward(latest_reward))
+    assert th.allclose(original_latest_reward, env.unnormalize_reward(latest_reward))
 
     obs = env.reset()
-    dummy_rewards = np.random.rand(10)
+    dummy_rewards = th.rand(10)
     original_obs = env.get_original_obs()
     # Check that unnormalization works
     assert allclose(original_obs, env.unnormalize_obs(obs))
@@ -466,10 +469,10 @@ def test_sync_vec_normalize(make_env):
     eval_env = VecNormalize(eval_env, training=False, norm_obs=False, norm_reward=False)
     env.reset()
     env.step([env.action_space.sample()])
-    assert not np.allclose(env.ret_rms.mean, eval_env.ret_rms.mean)
+    assert not th.allclose(env.ret_rms.mean, eval_env.ret_rms.mean)
     sync_envs_normalization(env, eval_env)
-    assert np.allclose(env.ret_rms.mean, eval_env.ret_rms.mean)
-    assert np.allclose(env.ret_rms.var, eval_env.ret_rms.var)
+    assert th.allclose(env.ret_rms.mean, eval_env.ret_rms.mean)
+    assert th.allclose(env.ret_rms.var, eval_env.ret_rms.var)
 
 
 def test_discrete_obs():

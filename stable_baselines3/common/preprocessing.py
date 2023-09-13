@@ -69,7 +69,7 @@ def is_image_space(
     return False
 
 
-def maybe_transpose(observation: np.ndarray, observation_space: spaces.Space) -> np.ndarray:
+def maybe_transpose(observation: th.Tensor, observation_space: spaces.Space) -> th.Tensor:
     """
     Handle the different cases for images as PyTorch use channel first format.
 
@@ -106,15 +106,18 @@ def preprocess_obs(
     :return:
     """
     if isinstance(observation_space, spaces.Box):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         if normalize_images and is_image_space(observation_space):
             return obs.float() / 255.0
         return obs.float()
 
     elif isinstance(observation_space, spaces.Discrete):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         # One hot encoding and convert to float to avoid errors
         return F.one_hot(obs.long(), num_classes=observation_space.n).float()
 
     elif isinstance(observation_space, spaces.MultiDiscrete):
+        assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         # Tensor concatenation of one hot encodings of each Categorical sub-space
         return th.cat(
             [

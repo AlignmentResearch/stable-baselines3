@@ -92,8 +92,8 @@ def test_state_dependent_noise(model_class, use_expln, squash_output):
     model.learn(total_timesteps=255)
     buffer = model.replay_buffer if model_class == SAC else model.rollout_buffer
     # Check that only scaled actions are stored
-    assert (buffer.actions <= model.action_space.high).all()
-    assert (buffer.actions >= model.action_space.low).all()
+    assert (buffer.actions.detach().cpu().numpy() <= model.action_space.high).all()
+    assert (buffer.actions.detach().cpu().numpy() >= model.action_space.low).all()
     if squash_output:
         # Pendulum action range is [-2, 2]
         # we check that the action are correctly unscaled

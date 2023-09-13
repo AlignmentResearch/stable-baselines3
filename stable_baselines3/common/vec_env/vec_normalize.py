@@ -1,15 +1,16 @@
 import inspect
 import pickle
-from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from gymnasium import spaces
+import torch as th
 
 from stable_baselines3.common import utils
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.running_mean_std import RunningMeanStd
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
+from stable_baselines3.common.vec_env.util import TensorObsType, clone_obs
 
 
 class VecNormalize(VecEnvWrapper):
@@ -86,14 +87,14 @@ class VecNormalize(VecEnvWrapper):
         self.clip_obs = clip_obs
         self.clip_reward = clip_reward
         # Returns: discounted rewards
-        self.returns = np.zeros(self.num_envs)
+        self.returns = th.zeros(self.num_envs)
         self.gamma = gamma
         self.epsilon = epsilon
         self.training = training
         self.norm_obs = norm_obs
         self.norm_reward = norm_reward
-        self.old_obs = np.array([])
-        self.old_reward = np.array([])
+        self.old_obs = th.tensor([], dtype=th.float32)
+        self.old_reward = th.tensor([], dtype=th.float32)
 
     def _sanity_checks(self) -> None:
         """
@@ -167,7 +168,7 @@ class VecNormalize(VecEnvWrapper):
 
         # Check that the observation_space shape match
         utils.check_shape_equal(self.observation_space, venv.observation_space)
-        self.returns = np.zeros(self.num_envs)
+        self.returns = th.zeros(self.num_envs)
 
     def step_wait(self) -> VecEnvStepReturn:
         """
@@ -203,57 +204,60 @@ class VecNormalize(VecEnvWrapper):
         self.returns[dones] = 0
         return obs, rewards, dones, infos
 
-    def _update_reward(self, reward: np.ndarray) -> None:
+    def _update_reward(self, reward: th.Tensor) -> None:
         """Update reward normalization statistics."""
         self.returns = self.returns * self.gamma + reward
         self.ret_rms.update(self.returns)
 
-    def _normalize_obs(self, obs: np.ndarray, obs_rms: RunningMeanStd) -> np.ndarray:
+    def _normalize_obs(self, obs: th.Tensor, obs_rms: RunningMeanStd) -> th.Tensor:
         """
         Helper to normalize observation.
         :param obs:
         :param obs_rms: associated statistics
         :return: normalized observation
         """
-        return np.clip((obs - obs_rms.mean) / np.sqrt(obs_rms.var + self.epsilon), -self.clip_obs, self.clip_obs)
+        return th.clip((obs - obs_rms.mean) / th.sqrt(obs_rms.var + self.epsilon), -self.clip_obs, self.clip_obs)
 
-    def _unnormalize_obs(self, obs: np.ndarray, obs_rms: RunningMeanStd) -> np.ndarray:
+    def _unnormalize_obs(self, obs: th.Tensor, obs_rms: RunningMeanStd) -> th.Tensor:
         """
         Helper to unnormalize observation.
         :param obs:
         :param obs_rms: associated statistics
         :return: unnormalized observation
         """
-        return (obs * np.sqrt(obs_rms.var + self.epsilon)) + obs_rms.mean
+        assert obs.is_floating_point(), ".to(obs) in the next line assumes obs is floating"
+        return (obs * th.sqrt(obs_rms.var + self.epsilon).to(obs)) + obs_rms.mean.to(obs)
 
-    def normalize_obs(self, obs: Union[np.ndarray, Dict[str, np.ndarray]]) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def normalize_obs(self, obs: TensorObsType) -> TensorObsType:
         """
         Normalize observations using this VecNormalize's observations statistics.
         Calling this method does not update statistics.
         """
         # Avoid modifying by reference the original object
-        obs_ = deepcopy(obs)
+        obs_ = clone_obs(obs)
         if self.norm_obs:
             if isinstance(obs, dict) and isinstance(self.obs_rms, dict):
                 # Only normalize the specified keys
                 for key in self.norm_obs_keys:
-                    obs_[key] = self._normalize_obs(obs[key], self.obs_rms[key]).astype(np.float32)
+                    dtype = obs[key].dtype if obs[key].is_floating_point() else th.get_default_dtype()
+                    obs_[key] = self._normalize_obs(obs[key], self.obs_rms[key]).to(dtype)
             else:
-                obs_ = self._normalize_obs(obs, self.obs_rms).astype(np.float32)
+                obs_ = self._normalize_obs(obs, self.obs_rms).to(th.float32)
         return obs_
 
-    def normalize_reward(self, reward: np.ndarray) -> np.ndarray:
+    def normalize_reward(self, reward: th.Tensor) -> th.Tensor:
         """
         Normalize rewards using this VecNormalize's rewards statistics.
         Calling this method does not update statistics.
         """
         if self.norm_reward:
-            reward = np.clip(reward / np.sqrt(self.ret_rms.var + self.epsilon), -self.clip_reward, self.clip_reward)
+            dtype = reward.dtype if reward.is_floating_point() else th.get_default_dtype()
+            reward = th.clip(reward / th.sqrt(self.ret_rms.var + self.epsilon), -self.clip_reward, self.clip_reward).to(dtype)
         return reward
 
-    def unnormalize_obs(self, obs: Union[np.ndarray, Dict[str, np.ndarray]]) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def unnormalize_obs(self, obs: Union[th.Tensor, Dict[str, th.Tensor]]) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         # Avoid modifying by reference the original object
-        obs_ = deepcopy(obs)
+        obs_ = clone_obs(obs)
         if self.norm_obs:
             if isinstance(obs, dict) and isinstance(self.obs_rms, dict):
                 for key in self.norm_obs_keys:
@@ -262,32 +266,33 @@ class VecNormalize(VecEnvWrapper):
                 obs_ = self._unnormalize_obs(obs, self.obs_rms)
         return obs_
 
-    def unnormalize_reward(self, reward: np.ndarray) -> np.ndarray:
+    def unnormalize_reward(self, reward: th.Tensor) -> th.Tensor:
         if self.norm_reward:
-            return reward * np.sqrt(self.ret_rms.var + self.epsilon)
+            assert reward.is_floating_point(), ".to(reward) in the next line assumes reward is floating"
+            return reward * th.sqrt(self.ret_rms.var + self.epsilon).to(reward)
         return reward
 
-    def get_original_obs(self) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def get_original_obs(self) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         """
         Returns an unnormalized version of the observations from the most recent
         step or reset.
         """
-        return deepcopy(self.old_obs)
+        return clone_obs(self.old_obs)
 
-    def get_original_reward(self) -> np.ndarray:
+    def get_original_reward(self) -> th.Tensor:
         """
         Returns an unnormalized version of the rewards from the most recent step.
         """
-        return self.old_reward.copy()
+        return self.old_reward.clone()
 
-    def reset(self) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def reset(self) -> Union[th.Tensor, Dict[str, th.Tensor]]:
         """
         Reset all environments
         :return: first observation of the episode
         """
         obs = self.venv.reset()
         self.old_obs = obs
-        self.returns = np.zeros(self.num_envs)
+        self.returns = th.zeros(self.num_envs)
         if self.training and self.norm_obs:
             if isinstance(obs, dict) and isinstance(self.obs_rms, dict):
                 for key in self.obs_rms.keys():

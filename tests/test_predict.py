@@ -9,6 +9,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.envs import IdentityEnv
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env.util import obs_as_tensor, obs_as_np
 
 MODEL_LIST = [
     PPO,
@@ -78,22 +79,22 @@ def test_predict(model_class, env_id, device):
     vec_env = DummyVecEnv([lambda: gym.make(env_id), lambda: gym.make(env_id)])
 
     obs, _ = env.reset()
-    action, _ = model.predict(obs)
-    assert isinstance(action, np.ndarray)
+    action, _ = model.predict(obs_as_tensor(obs))
+    assert isinstance(action, th.Tensor)
     assert action.shape == env.action_space.shape
-    assert env.action_space.contains(action)
+    assert env.action_space.contains(obs_as_np(action, env.action_space))
 
     vec_env_obs = vec_env.reset()
     action, _ = model.predict(vec_env_obs)
-    assert isinstance(action, np.ndarray)
+    assert isinstance(action, th.Tensor)
     assert action.shape[0] == vec_env_obs.shape[0]
 
     # Special case for DQN to check the epsilon greedy exploration
     if model_class == DQN:
         model.exploration_rate = 1.0
-        action, _ = model.predict(obs, deterministic=False)
+        action, _ = model.predict(obs_as_tensor(obs), deterministic=False)
         assert action.shape == env.action_space.shape
-        assert env.action_space.contains(action)
+        assert env.action_space.contains(obs_as_np(action, env.action_space))
 
         action, _ = model.predict(vec_env_obs, deterministic=False)
         assert action.shape[0] == vec_env_obs.shape[0]
@@ -106,7 +107,7 @@ def test_dqn_epsilon_greedy():
     obs, _ = env.reset()
     # is vectorized should not crash with discrete obs
     action, _ = model.predict(obs, deterministic=False)
-    assert env.action_space.contains(action)
+    assert env.action_space.contains(obs_as_np(action, env.action_space))
 
 
 @pytest.mark.parametrize("model_class", [A2C, SAC, PPO, TD3])
@@ -114,5 +115,5 @@ def test_subclassed_space_env(model_class):
     env = CustomSubClassedSpaceEnv()
     model = model_class("MlpPolicy", env, policy_kwargs=dict(net_arch=[32]))
     model.learn(300)
-    obs, _ = env.reset()
+    obs = model.get_env().reset()
     env.step(model.predict(obs))

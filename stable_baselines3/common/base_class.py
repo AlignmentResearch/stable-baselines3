@@ -141,10 +141,10 @@ class BaseAlgorithm(ABC):
         self.start_time = 0.0
         self.learning_rate = learning_rate
         self.tensorboard_log = tensorboard_log
-        self._last_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
-        self._last_episode_starts = None  # type: Optional[np.ndarray]
+        self._last_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
+        self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
-        self._last_original_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
+        self._last_original_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde
@@ -423,7 +423,7 @@ class BaseAlgorithm(ABC):
             # pytype: disable=annotation-type-mismatch
             self._last_obs = self.env.reset()  # type: ignore[assignment]
             # pytype: enable=annotation-type-mismatch
-            self._last_episode_starts = np.ones((self.env.num_envs,), dtype=bool)
+            self._last_episode_starts = th.ones((self.env.num_envs,), dtype=th.bool)
             # Retrieve unnormalized observation for saving into the buffer
             if self._vec_normalize_env is not None:
                 self._last_original_obs = self._vec_normalize_env.get_original_obs()
@@ -437,7 +437,7 @@ class BaseAlgorithm(ABC):
 
         return total_timesteps, callback
 
-    def _update_info_buffer(self, infos: List[Dict[str, Any]], dones: Optional[np.ndarray] = None) -> None:
+    def _update_info_buffer(self, infos: List[Dict[str, Any]], dones: Optional[th.Tensor] = None) -> None:
         """
         Retrieve reward, episode length, episode success and update the buffer
         if using Monitor wrapper or a GoalEnv.
@@ -449,7 +449,7 @@ class BaseAlgorithm(ABC):
         assert self.ep_success_buffer is not None
 
         if dones is None:
-            dones = np.array([False] * len(infos))
+            dones = th.zeros(len(infos), dtype=th.bool)
         for idx, info in enumerate(infos):
             maybe_ep_info = info.get("episode")
             maybe_is_success = info.get("is_success")
@@ -534,11 +534,11 @@ class BaseAlgorithm(ABC):
 
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
