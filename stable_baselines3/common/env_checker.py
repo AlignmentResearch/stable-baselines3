@@ -3,8 +3,8 @@ from typing import Any, Dict, Union
 
 import gymnasium as gym
 import numpy as np
-from gymnasium import spaces
 import torch as th
+from gymnasium import spaces
 
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space_channels_first
 from stable_baselines3.common.vec_env import DummyVecEnv, VecCheckNan

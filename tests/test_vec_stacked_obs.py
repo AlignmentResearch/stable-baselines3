@@ -3,7 +3,7 @@ import torch as th
 from gymnasium import spaces
 
 from stable_baselines3.common.vec_env.stacked_observations import StackedObservations
-from stable_baselines3.common.vec_env.util import obs_as_tensor, as_torch_dtype
+from stable_baselines3.common.vec_env.util import as_torch_dtype, obs_as_tensor
 
 compute_stacking = StackedObservations.compute_stacking
 NUM_ENVS = 2
@@ -99,9 +99,7 @@ def test_reset_update_box():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1),
     )
 
 
@@ -120,9 +118,7 @@ def test_reset_update_multidim_box():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1),
     )
 
 
@@ -141,9 +137,7 @@ def test_reset_update_multidim_box_channel_first():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1),
     )
 
 
@@ -162,9 +156,7 @@ def test_reset_update_image_channel_first():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1),
     )
 
 
@@ -183,9 +175,7 @@ def test_reset_update_image_channel_last():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=-1),
     )
 
 
@@ -225,22 +215,25 @@ def test_reset_update_image_channel_last_stack_first():
     assert stacked_obs.dtype == as_torch_dtype(space.dtype)
     assert th.equal(
         stacked_obs,
-        th.cat(
-            (th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1
-        ),
+        th.cat((th.zeros_like(observations_1), th.zeros_like(observations_1), observations_1, observations_2), axis=1),
     )
+
 
 def test_reset_update_dict():
     space = spaces.Dict({"key1": spaces.Box(0, 255, (H, W, C), dtype=np.uint8), "key2": spaces.Box(-1, 1, (4, 5))})
     stacked_observations = StackedObservations(NUM_ENVS, N_STACK, space, channels_order={"key1": "first", "key2": "last"})
-    observations_1 = obs_as_tensor({key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()})
+    observations_1 = obs_as_tensor(
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+    )
     stacked_obs = stacked_observations.reset(observations_1)
     assert isinstance(stacked_obs, dict)
     assert stacked_obs["key1"].shape == (NUM_ENVS, N_STACK * H, W, C)
     assert stacked_obs["key2"].shape == (NUM_ENVS, 4, N_STACK * 5)
     assert stacked_obs["key1"].dtype == as_torch_dtype(space["key1"].dtype)
     assert stacked_obs["key2"].dtype == as_torch_dtype(space["key2"].dtype)
-    observations_2 = obs_as_tensor({key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()})
+    observations_2 = obs_as_tensor(
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+    )
     dones = np.zeros((NUM_ENVS,), dtype=bool)
     infos = [{} for _ in range(NUM_ENVS)]
     stacked_obs, infos = stacked_observations.update(observations_2, dones, infos)
@@ -299,16 +292,22 @@ def test_episode_termination_box():
 def test_episode_termination_dict():
     space = spaces.Dict({"key1": spaces.Box(0, 255, (H, W, 3), dtype=np.uint8), "key2": spaces.Box(-1, 1, (4, 5))})
     stacked_observations = StackedObservations(NUM_ENVS, N_STACK, space, channels_order={"key1": "first", "key2": "last"})
-    observations_1 = obs_as_tensor({key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()})
+    observations_1 = obs_as_tensor(
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+    )
     stacked_observations.reset(observations_1)
-    observations_2 = obs_as_tensor({key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()})
+    observations_2 = obs_as_tensor(
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+    )
     dones = th.zeros((NUM_ENVS,), dtype=bool)
     infos = [{} for _ in range(NUM_ENVS)]
     stacked_observations.update(observations_2, dones, infos)
     terminal_observation = obs_as_tensor(space.sample())
     infos[1]["terminal_observation"] = terminal_observation  # episode termination in env1
     dones[1] = True
-    observations_3 = obs_as_tensor({key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()})
+    observations_3 = obs_as_tensor(
+        {key: np.stack([subspace.sample() for _ in range(NUM_ENVS)]) for key, subspace in space.spaces.items()}
+    )
     stacked_obs, infos = stacked_observations.update(observations_3, dones, infos)
 
     for key, axis in zip(observations_1.keys(), [0, -1]):
