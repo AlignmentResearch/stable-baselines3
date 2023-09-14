@@ -1,6 +1,7 @@
 import numpy as np
 import torch as th
 from gymnasium import spaces
+
 from stable_baselines3.common.vec_env.stacked_observations import StackedObservations
 from stable_baselines3.common.vec_env.util import as_torch_dtype, obs_as_tensor
 
