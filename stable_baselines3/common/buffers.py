@@ -5,7 +5,6 @@ from typing import Any, Dict, Generator, List, Optional, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
-from tests.test_vec_stacked_obs import as_torch_dtype
 
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 from stable_baselines3.common.type_aliases import (
@@ -18,6 +17,7 @@ from stable_baselines3.common.type_aliases import (
 from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.vec_env.util import TensorObsType
+from tests.test_vec_stacked_obs import as_torch_dtype
 
 try:
     # Check memory used by replay buffer when possible

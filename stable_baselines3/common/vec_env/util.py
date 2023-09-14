@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
+
 from stable_baselines3.common.preprocessing import check_for_nested_spaces
 from stable_baselines3.common.vec_env.base_vec_env import EnvObs, VecEnvObs
 
