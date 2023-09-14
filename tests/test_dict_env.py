@@ -4,7 +4,6 @@ import gymnasium as gym
 import numpy as np
 import pytest
 from gymnasium import spaces
-
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
@@ -122,7 +121,7 @@ def test_consistency(model_class):
     env = gym.wrappers.FlattenObservation(dict_env)
     dict_env.seed(10)
     obs, _ = dict_env.reset()
-    obs = obs_as_tensor(obs, None)
+    obs = obs_as_tensor(obs, device=None)
 
     kwargs = {}
     n_steps = 256

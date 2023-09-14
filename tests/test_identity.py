@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
 from stable_baselines3.common.envs import IdentityEnv, IdentityEnvBox, IdentityEnvMultiBinary, IdentityEnvMultiDiscrete
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -15,17 +14,16 @@ DIM = 4
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
     kwargs = {}
-    n_steps = 2500
+    n_steps = 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
 
-    # Some failure rate seems normal here, it's OK to tweak the seed until it passes
-    model = model_class("MlpPolicy", env_, gamma=0.4, seed=6, **kwargs).learn(n_steps)
+    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
 
-    evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=90, warn=False)
+    evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
     obs, _ = env.reset()
 
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
