@@ -9,7 +9,7 @@ parameters:
   docker_img_version:
     # Docker image version for running tests.
     type: string
-    default: "713d1c0"
+    default: "a0d53ea"
 
 workflows:
   test-jobs:
@@ -43,10 +43,15 @@ jobs:
     working_directory: /workspace/third_party/stable-baselines3
     steps:
       - checkout
-      - run: isort --profile black --check .
-      - run: black --check .
-      - run: ruff check .
-      - run: mypy .
+      - run:
+          name: Sort imports (ruff), check style (black)
+          command: make check-codestyle
+      - run:
+          name: Lint (ruff)
+          command: ruff .
+      - run:
+          name: Typecheck (mypy)
+          command: mypy .
   pytype:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
