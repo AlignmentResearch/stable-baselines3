@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional, Union
 
 import numpy as np
-from tests.test_vec_stacked_obs import as_torch_dtype
 import torch as th
 from gymnasium import spaces
 
@@ -18,6 +17,7 @@ from stable_baselines3.common.type_aliases import (
 from stable_baselines3.common.utils import get_device, nbytes
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.vec_env.util import TensorObsType
+from tests.test_vec_stacked_obs import as_torch_dtype
 
 try:
     # Check memory used by replay buffer when possible
@@ -737,9 +737,7 @@ class DictReplayBuffer(ReplayBuffer):
             next_observations=next_observations,
             # Only use dones that are not due to timeouts
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_device(self.dones[batch_inds, env_inds] * (1 - self.timeouts[batch_inds, env_inds])).reshape(
-                -1, 1
-            ),
+            dones=self.to_device(self.dones[batch_inds, env_inds] * (1 - self.timeouts[batch_inds, env_inds])).reshape(-1, 1),
             rewards=self.to_device(self._normalize_reward(self.rewards[batch_inds, env_inds].reshape(-1, 1), env)),
         )
 
@@ -790,7 +788,7 @@ class DictRolloutBuffer(RolloutBuffer):
 
         self.observations = {}
         for key, obs_input_shape in self.obs_shape.items():
-            self.observations[key] = th.zeros((self.buffer_size, self.n_envs) + obs_input_shape, dtype=th.float32)
+            self.observations[key] = th.zeros((self.buffer_size, self.n_envs, *obs_input_shape), dtype=th.float32)
         self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
         self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)

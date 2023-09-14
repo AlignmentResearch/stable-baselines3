@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 
