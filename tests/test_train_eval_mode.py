@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -37,7 +37,7 @@ class FlattenBatchNormDropoutExtractor(BaseFeaturesExtractor):
         return result
 
 
-def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> (th.Tensor, th.Tensor):
+def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> Tuple[th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the given batch norm layer.
 
@@ -47,7 +47,7 @@ def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> (th.Tensor, th.Tensor)
     return batch_norm.bias.clone(), batch_norm.running_mean.clone()
 
 
-def clone_dqn_batch_norm_stats(model: DQN) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+def clone_dqn_batch_norm_stats(model: DQN) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the Q-network and target network.
 
@@ -65,7 +65,7 @@ def clone_dqn_batch_norm_stats(model: DQN) -> (th.Tensor, th.Tensor, th.Tensor, 
 
 def clone_td3_batch_norm_stats(
     model: TD3,
-) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the actor and critic networks and actor-target and critic-target networks.
 
@@ -98,7 +98,7 @@ def clone_td3_batch_norm_stats(
 
 def clone_sac_batch_norm_stats(
     model: SAC,
-) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the actor and critic networks and critic-target networks.
 
@@ -117,7 +117,7 @@ def clone_sac_batch_norm_stats(
     return (actor_bias, actor_running_mean, critic_bias, critic_running_mean, critic_target_bias, critic_target_running_mean)
 
 
-def clone_on_policy_batch_norm(model: Union[A2C, PPO]) -> (th.Tensor, th.Tensor):
+def clone_on_policy_batch_norm(model: Union[A2C, PPO]) -> Tuple[th.Tensor, th.Tensor]:
     return clone_batch_norm_stats(model.policy.features_extractor.batch_norm)
 
 
