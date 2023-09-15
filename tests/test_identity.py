@@ -1,8 +1,13 @@
 import numpy as np
 import pytest
 
-from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
-from stable_baselines3.common.envs import IdentityEnv, IdentityEnvBox, IdentityEnvMultiBinary, IdentityEnvMultiDiscrete
+from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
+from stable_baselines3.common.envs import (
+    IdentityEnv,
+    IdentityEnvBox,
+    IdentityEnvMultiBinary,
+    IdentityEnvMultiDiscrete,
+)
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -10,7 +15,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 DIM = 4
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO, DQN])
+@pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
@@ -30,7 +35,7 @@ def test_discrete(model_class, env):
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO, SAC, DDPG, TD3])
+@pytest.mark.parametrize("model_class", [A2C, PPO, SAC, DDPG, TD3, RecurrentPPO])
 def test_continuous(model_class):
     env = IdentityEnvBox(eps=0.5)
 

@@ -5,12 +5,17 @@ import numpy as np
 import pytest
 from gymnasium import spaces
 
-from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
+from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import BitFlippingEnv, SimpleMultiObsEnv
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecFrameStack, VecNormalize
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    SubprocVecEnv,
+    VecFrameStack,
+    VecNormalize,
+)
 from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 
@@ -110,7 +115,7 @@ def test_goal_env(model_class):
     evaluate_policy(model, model.get_env())
 
 
-@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3])
+@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3, RecurrentPPO])
 def test_consistency(model_class):
     """
     Make sure that dict obs with vector only vs using flatten obs is equivalent.
@@ -157,7 +162,7 @@ def test_consistency(model_class):
     assert np.allclose(action_1, action_2)
 
 
-@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3])
+@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3, RecurrentPPO])
 @pytest.mark.parametrize("channel_last", [False, True])
 def test_dict_spaces(model_class, channel_last):
     """
@@ -201,7 +206,7 @@ def test_dict_spaces(model_class, channel_last):
     evaluate_policy(model, env, n_eval_episodes=5, warn=False)
 
 
-@pytest.mark.parametrize("model_class", [PPO, A2C, SAC, DQN])
+@pytest.mark.parametrize("model_class", [PPO, A2C, SAC, DQN, RecurrentPPO])
 def test_multiprocessing(model_class):
     use_discrete_actions = model_class not in [SAC, TD3, DDPG]
 
@@ -238,7 +243,7 @@ def test_multiprocessing(model_class):
     model.learn(total_timesteps=n_steps)
 
 
-@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3])
+@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3, RecurrentPPO])
 @pytest.mark.parametrize("channel_last", [False, True])
 def test_dict_vec_framestack(model_class, channel_last):
     """
@@ -286,7 +291,7 @@ def test_dict_vec_framestack(model_class, channel_last):
     evaluate_policy(model, env, n_eval_episodes=5, warn=False)
 
 
-@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3])
+@pytest.mark.parametrize("model_class", [PPO, A2C, DQN, DDPG, SAC, TD3, RecurrentPPO])
 def test_vec_normalize(model_class):
     """
     Additional tests for PPO/A2C/SAC/DDPG/TD3/DQN to check observation space support

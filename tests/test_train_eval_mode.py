@@ -6,17 +6,11 @@ import pytest
 import torch as th
 import torch.nn as nn
 
-from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
+from stable_baselines3 import A2C, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-MODEL_LIST = [
-    PPO,
-    A2C,
-    TD3,
-    SAC,
-    DQN,
-]
+MODEL_LIST = [PPO, A2C, TD3, SAC, DQN, RecurrentPPO]
 
 
 class FlattenBatchNormDropoutExtractor(BaseFeaturesExtractor):
@@ -268,7 +262,7 @@ def test_sac_train_with_batch_norm():
     assert th.isclose(critic_running_mean_after, critic_target_running_mean_after).all()
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO])
+@pytest.mark.parametrize("model_class", [A2C, PPO, RecurrentPPO])
 @pytest.mark.parametrize("env_id", ["Pendulum-v1", "CartPole-v1"])
 def test_a2c_ppo_train_with_batch_norm(model_class, env_id):
     model = model_class(
@@ -319,7 +313,7 @@ def test_offpolicy_collect_rollout_batch_norm(model_class):
         assert th.isclose(param_before, param_after).all()
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO])
+@pytest.mark.parametrize("model_class", [A2C, PPO, RecurrentPPO])
 @pytest.mark.parametrize("env_id", ["Pendulum-v1", "CartPole-v1"])
 def test_a2c_ppo_collect_rollouts_with_batch_norm(model_class, env_id):
     model = model_class(
