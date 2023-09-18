@@ -1,30 +1,42 @@
-from typing import Iterable, NamedTuple, Optional, Sequence, Tuple
+from typing import Optional, Tuple, TypeVar
 
 import torch as th
 from gymnasium import spaces
 from optree import PyTree
+
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
-from stable_baselines3.common.type_aliases import TensorDict
 
 HiddenState = PyTree[th.Tensor]
 
 
+PyTreeGeneric = TypeVar("PyTreeGeneric", bound=PyTree)
+
+
 def space_to_example(
-    batch_shape: Tuple[int, ...], space: spaces.Space, *, device: Optional[th.device] = None
+    batch_shape: Tuple[int, ...],
+    space: spaces.Space,
+    *,
+    device: Optional[th.device] = None,
+    ensure_non_batch_dim: bool = False,
 ) -> PyTree[th.Tensor]:
+    if isinstance(space, spaces.Dict):
+        return {k: space_to_example(v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for k, v in space.items()}
+    if isinstance(space, spaces.Tuple):
+        return tuple(space_to_example(v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for v in space)
+
     if isinstance(space, spaces.Box):
-        return torch.zeros((*batch_shape, space.shape), dtype=th.float32, device=device)
+        space_shape = space.shape
     elif isinstance(space, spaces.Discrete):
-        return torch.zeros((*batch_shape), dtype=th.int64, device=device)
-    elif isinstance(space, spaces.Dict):
-        return {k: space_to_example(v) for k, v in space.items()}
-    elif isinstance(space, spaces.Tuple):
-        return tuple(space_to_example(v) for v in space)
+        space_shape = ()
     else:
         raise TypeError(f"Unknown space type {type(space)} for {space}")
 
+    if ensure_non_batch_dim and space_shape:
+        space_shape = (1,)
+    return th.zeros((*batch_shape, *space_shape), dtype=th.float32, device=device)
 
-@dataclass_frozen_pytree
+
+@functools.partial(dataclass_frozen_pytree, frozen=False)
 class RecurrentRolloutBufferSamples:
     observations: PyTree[th.Tensor]
     actions: th.Tensor
@@ -32,6 +44,6 @@ class RecurrentRolloutBufferSamples:
     old_log_prob: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    hidden_states: RNNStates
+    hidden_states: HiddenState
     episode_starts: th.Tensor
-    mask: th.Tensor
+    rewards: Optional[th.Tensor] = None

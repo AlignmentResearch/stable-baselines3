@@ -36,7 +36,9 @@ def register_dataclass_as_pytree(Cls, whitelist: Optional[Sequence[str]] = None)
 @dataclass_transform()
 def dataclass_frozen_pytree(Cls: Type, **kwargs) -> Type[ot.PyTree]:
     """Decorator to make a frozen dataclass and register it as a PyTree."""
-    dataCls = dataclasses.dataclass(frozen=True, slots=True, **kwargs)(Cls)
+    true_kwargs = dict(frozen=True, slots=True)
+    true_kwargs.update(kwargs)
+    dataCls = dataclasses.dataclass(**true_kwargs)(Cls)
     register_dataclass_as_pytree(dataCls)
     return dataCls
 
