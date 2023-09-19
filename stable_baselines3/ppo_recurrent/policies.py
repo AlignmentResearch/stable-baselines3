@@ -1,4 +1,4 @@
-from sb3_contrib.common.recurrent.policies import (
+from stable_baselines3.common.recurrent.policies import (
     RecurrentActorCriticCnnPolicy,
     RecurrentActorCriticPolicy,
     RecurrentMultiInputActorCriticPolicy,

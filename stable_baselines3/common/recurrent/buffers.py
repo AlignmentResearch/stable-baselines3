@@ -49,7 +49,7 @@ def space_to_example(
     else:
         raise TypeError(f"Unknown space type {type(space)} for {space}")
 
-    if ensure_non_batch_dim and space_shape:
+    if ensure_non_batch_dim and not space_shape:
         space_shape = (1,)
     return th.zeros((*batch_shape, *space_shape), dtype=th.float32, device=device)
 
@@ -94,7 +94,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         device = self.device
 
         self.hidden_state_example = ot.tree_map(
-            lambda x: th.zeros((), dtype=x.dtype, device=device).expand_as(x), hidden_state_example
+            lambda x: th.zeros((), dtype=x.dtype, device=device).expand_as(x), hidden_state_example, namespace=NS
         )
         self.advantages = th.zeros(batch_shape, dtype=th.float32, device=device)
         self.returns = th.zeros(batch_shape, dtype=th.float32, device=device)
@@ -102,7 +102,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             observations=space_to_example(batch_shape, self.observation_space, device=device, ensure_non_batch_dim=True),
             actions=th.zeros((*batch_shape, self.action_dim), dtype=th.float32, device=device),
             rewards=th.zeros(batch_shape, dtype=th.float32, device=device),
-            episode_starts=th.zeros(batch_shape, dtype=th.float32, device=device),
+            episode_starts=th.zeros(batch_shape, dtype=th.bool, device=device),
             values=th.zeros(batch_shape, dtype=th.float32, device=device),
             log_probs=th.zeros(batch_shape, dtype=th.float32, device=device),
             hidden_states=ot.tree_map(
@@ -125,7 +125,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
     @property
     def values(self) -> th.Tensor:
-        return self.data.old_values
+        return self.data.values
 
     @property
     def rewards(self) -> th.Tensor:
@@ -175,8 +175,17 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             yield self._get_samples(slice(None))
             return
 
-        for start_idx in range(0, self.buffer_size * self.n_envs, batch_size):
-            yield self._get_samples(slice(start_idx, start_idx + batch_size, None))
+        if batch_size % self.n_envs != 0 or batch_size < self.n_envs:
+            raise ValueError(
+                f"The batch size must be a multiple of the number of environments (n_envs={self.n_envs}) ",
+                f"but batch_size={batch_size}.",
+            )
+        batch_size //= self.n_envs
+
+        for start_idx in range(0, self.buffer_size, batch_size):
+            out = self._get_samples(slice(start_idx, start_idx + batch_size, None))
+            assert len(out.observations) != 0
+            yield out
 
     def _get_samples(
         self,
@@ -188,7 +197,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             actions=self.data.actions,
             episode_starts=self.data.episode_starts,
             old_values=self.data.values,
-            old_log_probs=self.data.log_probs,
+            old_log_prob=self.data.log_probs,
             advantages=self.advantages,
             returns=self.returns,
             hidden_states=self.data.hidden_states,

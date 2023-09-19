@@ -5,7 +5,6 @@ from typing import Any, Dict, Generator, List, Optional, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
-
 from stable_baselines3.common.preprocessing import get_action_dim, get_obs_shape
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
@@ -422,7 +421,7 @@ class RolloutBuffer(BaseBuffer):
         self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32, device=self.device)
         self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
-        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool, device=self.device)
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
@@ -457,7 +456,7 @@ class RolloutBuffer(BaseBuffer):
                 next_non_terminal = ~dones
                 next_values = last_values
             else:
-                next_non_terminal = 1.0 - self.episode_starts[step + 1]
+                next_non_terminal = ~self.episode_starts[step + 1]
                 next_values = self.values[step + 1]
             delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
             last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
@@ -791,7 +790,7 @@ class DictRolloutBuffer(RolloutBuffer):
         self.actions = th.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=th.float32)
         self.rewards = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.returns = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
-        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
+        self.episode_starts = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool, device=self.device)
         self.values = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.log_probs = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)
         self.advantages = th.zeros((self.buffer_size, self.n_envs), dtype=th.float32, device=self.device)

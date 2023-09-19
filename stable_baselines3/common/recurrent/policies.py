@@ -1,10 +1,16 @@
+import math
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
+import optree as ot
 import torch as th
 from gymnasium import spaces
+from torch import nn
+
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
+from stable_baselines3.common.recurrent.buffers import space_to_example
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
@@ -12,11 +18,15 @@ from stable_baselines3.common.torch_layers import (
     MlpExtractor,
     NatureCNN,
 )
-from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
 from stable_baselines3.common.utils import zip_strict
-from torch import nn
+from tests.test_buffers import OT_NAMESPACE as NS
 
-from sb3_contrib.common.recurrent.type_aliases import RNNStates
+
+@dataclass_frozen_pytree
+class LSTMStates:
+    pi: th.Tensor
+    vf: th.Tensor
 
 
 class RecurrentActorCriticPolicy(ActorCriticPolicy):
@@ -159,6 +169,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             device=self.device,
         )
 
+        self.observation_example = space_to_example((), self.observation_space)
+
     @staticmethod
     def _process_sequence(
         features: th.Tensor,
@@ -200,8 +212,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
                 features.unsqueeze(dim=0),
                 (
                     # Reset the states at the beginning of a new episode
-                    (1.0 - episode_start).view(1, n_seq, 1) * lstm_states[0],
-                    (1.0 - episode_start).view(1, n_seq, 1) * lstm_states[1],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[0],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[1],
                 ),
             )
             lstm_output += [hidden]
@@ -213,10 +225,10 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
     def forward(
         self,
         obs: th.Tensor,
-        lstm_states: RNNStates,
+        lstm_states: LSTMStates,
         episode_starts: th.Tensor,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RNNStates]:
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, LSTMStates]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -254,7 +266,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         distribution = self._get_action_dist_from_latent(latent_pi)
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
-        return actions, values, log_prob, RNNStates(lstm_states_pi, lstm_states_vf)
+        return actions, values, log_prob, LSTMStates(lstm_states_pi, lstm_states_vf)
 
     def get_distribution(
         self,
@@ -307,8 +319,20 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
 
+    def extract_features(self, obs: TorchGymObs) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
+        obs_flat = ot.tree_map(lambda x, x_nobatch: x.view(-1, *x_nobatch.shape), obs, self.observation_example, namespace=NS)
+        obs_batch_shapes = ot.tree_map(
+            lambda x, x_nobatch: x.shape[: x.ndim - x_nobatch.ndim], obs, self.observation_example, namespace=NS
+        )
+
+        (obs_batch_shape, *_), _ = ot.tree_flatten(obs_batch_shapes, namespace=NS)
+
+        features_flat = super().extract_features(obs_flat)
+        features = ot.tree_map(lambda x: x.view(*obs_batch_shape, *x.shape[1:]), features_flat, namespace=NS)
+        return features
+
     def evaluate_actions(
-        self, obs: th.Tensor, actions: th.Tensor, lstm_states: RNNStates, episode_starts: th.Tensor
+        self, obs: th.Tensor, actions: th.Tensor, lstm_states: LSTMStates, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Evaluate actions according to the current policy,
@@ -336,13 +360,18 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         else:
             latent_vf = self.critic(vf_features)
 
+        features_batch_shape = pi_features.shape[:-1]
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf)
-        return values, log_prob, distribution.entropy()
+        return (
+            values.view(features_batch_shape),
+            log_prob.view(features_batch_shape),
+            distribution.entropy().view(features_batch_shape),
+        )
 
     def _predict(
         self,
@@ -366,11 +395,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -395,25 +424,16 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         # state : (n_layers, n_envs, dim)
         if state is None:
             # Initialize hidden states to zeros
-            state = np.concatenate([np.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
-            state = (state, state)
+            state_component = th.cat([th.zeros(self.lstm_hidden_state_shape)] * n_envs, axis=1)
+            state = (state_component, state_component)
 
         if episode_start is None:
-            episode_start = np.array([False for _ in range(n_envs)])
+            episode_start = th.zeros((n_envs,), dtype=th.bool)
 
         with th.no_grad():
-            # Convert to PyTorch tensors
-            states = th.tensor(state[0], dtype=th.float32, device=self.device), th.tensor(
-                state[1], dtype=th.float32, device=self.device
-            )
-            episode_starts = th.tensor(episode_start, dtype=th.float32, device=self.device)
             actions, states = self._predict(
-                observation, lstm_states=states, episode_starts=episode_starts, deterministic=deterministic
+                observation, lstm_states=state, episode_starts=episode_start, deterministic=deterministic
             )
-            states = (states[0].cpu().numpy(), states[1].cpu().numpy())
-
-        # Convert to numpy
-        actions = actions.cpu().numpy()
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:
@@ -422,7 +442,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             else:
                 # Actions could be on arbitrary scale, so clip the actions to avoid
                 # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
 
         # Remove batch dimension if needed
         if not vectorized_env:

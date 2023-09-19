@@ -29,7 +29,7 @@ class RecurrentRolloutBufferSamples:
     actions: th.Tensor
     episode_starts: th.Tensor
     old_values: th.Tensor
-    old_log_probs: th.Tensor
+    old_log_prob: th.Tensor
     hidden_states: HiddenState
     advantages: th.Tensor
     returns: th.Tensor
