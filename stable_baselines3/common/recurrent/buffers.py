@@ -178,7 +178,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         if self.pos == self.buffer_size:
             self.full = True
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
+    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:  # type: ignore[signature-mismatch] #FIXME
         assert self.full, "Rollout buffer must be full before sampling from it"
 
         # Return everything, don't create minibatches
@@ -198,7 +198,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             assert len(out.observations) != 0
             yield out
 
-    def _get_samples(
+    def _get_samples(  # type: ignore[override]
         self,
         batch_inds: Union[slice, th.Tensor],
         env: Optional[VecNormalize] = None,
