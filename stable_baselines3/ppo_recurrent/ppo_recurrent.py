@@ -87,6 +87,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "MlpLstmPolicy": MlpLstmPolicy,
         "CnnLstmPolicy": CnnLstmPolicy,
         "MultiInputLstmPolicy": MultiInputLstmPolicy,
+        "MlpPolicy": MlpLstmPolicy,
+        "CnnPolicy": CnnLstmPolicy,
+        "MultiInputPolicy": MultiInputLstmPolicy,
     }
 
     def __init__(
