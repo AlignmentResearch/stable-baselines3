@@ -9,6 +9,7 @@ from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
 from stable_baselines3.common.recurrent.buffers import space_to_example
 from stable_baselines3.common.torch_layers import (
@@ -20,7 +21,6 @@ from stable_baselines3.common.torch_layers import (
 )
 from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
 from stable_baselines3.common.utils import zip_strict
-from tests.test_buffers import OT_NAMESPACE as NS
 
 
 @dataclass_frozen_pytree
