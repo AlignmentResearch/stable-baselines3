@@ -1,7 +1,6 @@
-from typing import Optional, Tuple, TypeVar
+from typing import TypeVar
 
 import torch as th
-from gymnasium import spaces
 from optree import PyTree
 
 from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree

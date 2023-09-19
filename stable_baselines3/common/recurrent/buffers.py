@@ -24,7 +24,7 @@ def index_into_pytree(
     none_is_leaf: bool = False,
     namespace: str = NS,
 ) -> PyTreeGeneric:
-    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
+    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)  # type: ignore
 
 
 def space_to_example(
@@ -178,7 +178,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         if self.pos == self.buffer_size:
             self.full = True
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferData, None, None]:
+    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
 
         # Return everything, don't create minibatches

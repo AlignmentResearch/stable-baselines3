@@ -18,9 +18,6 @@ from stable_baselines3.common.recurrent.buffers import (
     RecurrentRolloutBuffer,
     RecurrentRolloutBufferData,
 )
-from stable_baselines3.common.recurrent.type_aliases import (
-    RecurrentRolloutBufferSamples,
-)
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     ReplayBufferSamples,

@@ -1,7 +1,5 @@
-import math
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
-import numpy as np
 import optree as ot
 import torch as th
 from gymnasium import spaces
@@ -360,19 +358,14 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         else:
             latent_vf = self.critic(vf_features)
 
-        features_batch_shape = pi_features.shape[:2]
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
-        values = self.value_net(latent_vf)
         distribution = self._get_action_dist_from_latent(latent_pi)
-        log_prob = distribution.log_prob(actions.view((-1, *values.shape[2:])))
+        log_prob = distribution.log_prob(actions)
+        values = self.value_net(latent_vf)
         entropy = distribution.entropy()
-        return (
-            values.view(*features_batch_shape, *values.shape[2:]),
-            log_prob.view(*features_batch_shape, *log_prob.shape[2:]),
-            entropy.view(*features_batch_shape, *entropy.shape[2:]),
-        )
+        return (values, log_prob, entropy)
 
     def _predict(
         self,
