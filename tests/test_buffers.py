@@ -1,13 +1,30 @@
 import gymnasium as gym
 import numpy as np
+import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer
+from stable_baselines3.common.buffers import (
+    DictReplayBuffer,
+    DictRolloutBuffer,
+    ReplayBuffer,
+    RolloutBuffer,
+)
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.type_aliases import DictReplayBufferSamples, ReplayBufferSamples
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
+from stable_baselines3.common.recurrent.buffers import (
+    RecurrentRolloutBuffer,
+    RecurrentRolloutBufferData,
+)
+from stable_baselines3.common.recurrent.type_aliases import (
+    RecurrentRolloutBufferSamples,
+)
+from stable_baselines3.common.type_aliases import (
+    DictReplayBufferSamples,
+    ReplayBufferSamples,
+)
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -108,7 +125,9 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     assert np.allclose(sample.rewards.mean(0), np.zeros(1), atol=1)
 
 
-@pytest.mark.parametrize("replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer])
+@pytest.mark.parametrize(
+    "replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, RecurrentRolloutBuffer]
+)
 @pytest.mark.parametrize("device", ["cpu", "cuda", "auto"])
 def test_device_buffer(replay_buffer_cls, device):
     if device == "cuda" and not th.cuda.is_available():
@@ -119,10 +138,17 @@ def test_device_buffer(replay_buffer_cls, device):
         DictRolloutBuffer: DummyDictEnv,
         ReplayBuffer: DummyEnv,
         DictReplayBuffer: DummyDictEnv,
+        RecurrentRolloutBuffer: DummyDictEnv,
     }[replay_buffer_cls]
     env = make_vec_env(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
+    if replay_buffer_cls == RecurrentRolloutBuffer:
+        hidden_states = {"a": {"b": th.zeros(2, 4)}}
+        buffer = RecurrentRolloutBuffer(
+            100, env.observation_space, env.action_space, hidden_state_example=hidden_states, device=device
+        )
+    else:
+        buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
 
     # Interract and store transitions
     obs = env.reset()
@@ -133,21 +159,25 @@ def test_device_buffer(replay_buffer_cls, device):
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(obs, action, reward, episode_start, values, log_prob)
+        elif replay_buffer_cls == RecurrentRolloutBuffer:
+            episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
+            hidden_states = {"a": {"b": th.zeros(2, buffer.n_envs, 4)}}
+            buffer.add(RecurrentRolloutBufferData(obs, action, reward, episode_start, values, log_prob, hidden_states))
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
 
     # Get data from the buffer
-    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
+    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer, RecurrentRolloutBuffer]:
         data = buffer.get(50)
     elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
-        data = buffer.sample(50)
+        data = [buffer.sample(50)]
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type
-    for value in list(data):
-        if isinstance(value, dict):
-            for key in value.keys():
-                assert value[key].device.type == desired_device
-        elif isinstance(value, th.Tensor):
+    for minibatch in list(data):
+        flattened_tensors, _ = ot.tree_flatten(minibatch, namespace=OT_NAMESPACE)
+        assert len(flattened_tensors) > 3
+        for value in flattened_tensors:
+            assert isinstance(value, th.Tensor)
             assert value.device.type == desired_device

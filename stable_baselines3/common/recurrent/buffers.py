@@ -1,17 +1,18 @@
 import dataclasses
-from typing import Any, Callable, Generator, Optional, Union
+from typing import Any, Callable, Generator, Optional, Tuple, Union
 
 import optree as ot
 import torch as th
 from gymnasium import spaces
+from optree import PyTree
 
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
 from stable_baselines3.common.recurrent.type_aliases import (
     HiddenState,
     PyTreeGeneric,
+    RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
-    space_to_example,
 )
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -24,6 +25,33 @@ def index_into_pytree(
     namespace: str = NS,
 ) -> PyTreeGeneric:
     return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
+
+
+def space_to_example(
+    batch_shape: Tuple[int, ...],
+    space: spaces.Space,
+    *,
+    device: Optional[th.device] = None,
+    ensure_non_batch_dim: bool = False,
+) -> PyTree[th.Tensor]:
+    if isinstance(space, spaces.Dict):
+        return {
+            k: space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim)
+            for k, v in space.items()
+        }
+    if isinstance(space, spaces.Tuple):
+        return tuple(space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for v in space)
+
+    if isinstance(space, spaces.Box):
+        space_shape = space.shape
+    elif isinstance(space, spaces.Discrete):
+        space_shape = ()
+    else:
+        raise TypeError(f"Unknown space type {type(space)} for {space}")
+
+    if ensure_non_batch_dim and space_shape:
+        space_shape = (1,)
+    return th.zeros((*batch_shape, *space_shape), dtype=th.float32, device=device)
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
@@ -42,6 +70,10 @@ class RecurrentRolloutBuffer(RolloutBuffer):
     :param n_envs: Number of parallel environments
     """
 
+    advantages: th.Tensor
+    returns: th.Tensor
+    data: RecurrentRolloutBufferData
+
     def __init__(
         self,
         buffer_size: int,
@@ -53,33 +85,38 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         gamma: float = 0.99,
         n_envs: int = 1,
     ):
+        super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device=device, n_envs=n_envs)
+        self.hidden_state_example = hidden_state_example
+        self.gae_lambda = gae_lambda
+        self.gamma = gamma
+
+        batch_shape = (self.buffer_size, self.n_envs)
+        device = self.device
+
         self.hidden_state_example = ot.tree_map(
             lambda x: th.zeros((), dtype=x.dtype, device=device).expand_as(x), hidden_state_example
         )
-        super().__init__(buffer_size, observation_space, action_space, device, gae_lambda, gamma, n_envs)
-
-        batch_shape = (self.buffer_size, self.n_envs)
-        action_dim = self.action_dim
-        observation_space = self.observation_space
-        hidden_state_example = self.hidden_state_example
-        device = self.device
-
-        self.data = RecurrentRolloutBufferSamples(
-            observations=space_to_example(batch_shape, observation_space, device=device, ensure_non_batch_dim=True),
-            actions=th.zeros((*batch_shape, action_dim), dtype=th.float32, device=device),
-            old_values=th.zeros(batch_shape, dtype=th.float32, device=device),
-            old_log_probs=th.zeros(batch_shape, dtype=th.float32, device=device),
-            advantages=th.zeros(batch_shape, dtype=th.float32, device=device),
-            returns=th.zeros(batch_shape, dtype=th.float32, device=device),
-            hidden_states=ot.tree_map(
-                lambda x: th.zeros(
-                    (*batch_shape[:-1], x.shape[0], batch_shape[-1], x.shape[1:]), dtype=x.dtype, device=device
-                ),
-                hidden_state_example,
-            ),
-            episode_starts=th.zeros(batch_shape, dtype=th.float32, device=device),
+        self.advantages = th.zeros(batch_shape, dtype=th.float32, device=device)
+        self.returns = th.zeros(batch_shape, dtype=th.float32, device=device)
+        self.data = RecurrentRolloutBufferData(
+            observations=space_to_example(batch_shape, self.observation_space, device=device, ensure_non_batch_dim=True),
+            actions=th.zeros((*batch_shape, self.action_dim), dtype=th.float32, device=device),
             rewards=th.zeros(batch_shape, dtype=th.float32, device=device),
+            episode_starts=th.zeros(batch_shape, dtype=th.float32, device=device),
+            values=th.zeros(batch_shape, dtype=th.float32, device=device),
+            log_probs=th.zeros(batch_shape, dtype=th.float32, device=device),
+            hidden_states=ot.tree_map(
+                lambda x: th.zeros(self._reshape_hidden_state_shape(batch_shape, x.shape), dtype=x.dtype, device=device),
+                hidden_state_example,
+                namespace=NS,
+            ),
         )
+
+    @staticmethod
+    def _reshape_hidden_state_shape(batch_shape: Tuple[int, ...], state_shape: Tuple[int, ...]) -> Tuple[int, ...]:
+        if len(state_shape) < 2:
+            raise NotImplementedError("State shape must be 2+ dimensions currently")
+        return (*batch_shape[:-1], state_shape[0], batch_shape[-1], *state_shape[1:])
 
     # Expose attributes of the RecurrentRolloutBufferData in the top-level to conform to the RolloutBuffer interface
     @property
@@ -95,19 +132,9 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         assert self.data.rewards is not None, "RecurrentRolloutBufferData should store rewards"
         return self.data.rewards
 
-    @property
-    def advantages(self) -> th.Tensor:
-        return self.data.advantages
-
-    @property
-    def returns(self) -> th.Tensor:
-        return self.data.returns
-
-    @returns.setter
-    def _set_returns(self, new_returns: th.Tensor):
-        self.data.returns.copy_(new_returns, non_blocking=True)
-
     def reset(self):
+        self.returns.zero_()
+        self.advantages.zero_()
         ot.tree_map(lambda x: x.zero_(), self.data, namespace=NS)
         super(RolloutBuffer, self).reset()
 
@@ -127,20 +154,20 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         for i in range(len_tensors):
             self.add(*index_into_pytree(i, args, is_leaf=_is_list, namespace=NS))
 
-    def add(self, data: RecurrentRolloutBufferSamples, **kwargs) -> None:
+    def add(self, data: RecurrentRolloutBufferData, **kwargs) -> None:
         """
         :param hidden_states: LSTM cell and hidden state
         """
         if data.rewards is None:
             raise ValueError("Recorded samples must contain a reward")
         new_data = dataclasses.replace(data, actions=data.actions.reshape((self.n_envs, self.action_dim)))
-        ot.tree_map(lambda buf, x: buf[self.pos].copy_(x, non_blocking=True), self.data, new_data)
+        ot.tree_map(lambda buf, x: buf[self.pos].copy_(x, non_blocking=True), self.data, new_data, namespace=NS)
         # Increment pos
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
+    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferData, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
 
         # Return everything, don't create minibatches
@@ -156,5 +183,14 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         batch_inds: Union[slice, th.Tensor],
         env: Optional[VecNormalize] = None,
     ) -> RecurrentRolloutBufferSamples:
-        data_without_reward: RecurrentRolloutBufferSamples = dataclasses.replace(self.data, rewards=None)
-        return ot.tree_map(lambda tens: self.to_device(tens[batch_inds]), data_without_reward)
+        samples = RecurrentRolloutBufferSamples(
+            observations=self.data.observations,
+            actions=self.data.actions,
+            episode_starts=self.data.episode_starts,
+            old_values=self.data.values,
+            old_log_probs=self.data.log_probs,
+            advantages=self.advantages,
+            returns=self.returns,
+            hidden_states=self.data.hidden_states,
+        )
+        return ot.tree_map(lambda tens: self.to_device(tens[batch_inds]), samples, namespace=NS)
