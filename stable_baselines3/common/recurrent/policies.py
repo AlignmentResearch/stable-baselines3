@@ -363,7 +363,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
         action_batch_shape = actions.shape[:-1]
         distribution = self._get_action_dist_from_latent(latent_pi)
-        distribution_shape = distribution.distribution.batch_shape + distribution.distribution.event_shape
+        distribution_shape = distribution.mode().shape  # FIXME: don't instantiate a tensor for a shape
         log_prob = distribution.log_prob(actions.view(distribution_shape))
         values = self.value_net(latent_vf)
         entropy = distribution.entropy()

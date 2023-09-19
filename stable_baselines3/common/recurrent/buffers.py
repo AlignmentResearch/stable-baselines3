@@ -51,6 +51,9 @@ def space_to_example(
     elif isinstance(space, spaces.MultiDiscrete):
         space_shape = (len(space.nvec),)
         space_dtype = th.long
+    elif isinstance(space, spaces.MultiBinary):
+        space_shape = (space.n,)
+        space_dtype = th.float32
     else:
         raise TypeError(f"Unknown space type {type(space)} for {space}")
 

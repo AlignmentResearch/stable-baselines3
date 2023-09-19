@@ -2,13 +2,12 @@ import sys
 import time
 import warnings
 from copy import deepcopy
-from typing import Any, ClassVar, Dict, Optional, Type, Union
+from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
 import torch.nn.functional as F
 from gymnasium import spaces
-from typing_extensions import Self
 
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -36,6 +35,8 @@ from stable_baselines3.ppo_recurrent.policies import (
     MlpLstmPolicy,
     MultiInputLstmPolicy,
 )
+
+SelfRecurrentPPO = TypeVar("SelfRecurrentPPO", bound="RecurrentPPO")
 
 
 class RecurrentPPO(OnPolicyAlgorithm):
@@ -150,7 +151,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # because of the advantage normalization
         if normalize_advantage:
             assert (
-                batch_size > 1
+                batch_size is None or batch_size > 1
             ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
         if self.env is not None:
@@ -489,14 +490,14 @@ class RecurrentPPO(OnPolicyAlgorithm):
             self.logger.record("train/clip_range_vf", clip_range_vf)
 
     def learn(
-        self: Self,
+        self: SelfRecurrentPPO,
         total_timesteps: int,
         callback: MaybeCallback = None,
         log_interval: int = 1,
         tb_log_name: str = "RecurrentPPO",
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
-    ) -> Self:
+    ) -> SelfRecurrentPPO:
         iteration = 0
 
         total_timesteps, callback = self._setup_learn(
