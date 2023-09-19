@@ -1,25 +1,36 @@
 import sys
 import time
 from copy import deepcopy
-from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
+from typing import Any, ClassVar, Dict, Optional, Type, Union
 
 import numpy as np
 import torch as th
 from gymnasium import spaces
+from typing_extensions import Self
+
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.recurrent.buffers import (
+    RecurrentDictRolloutBuffer,
+    RecurrentRolloutBuffer,
+)
+from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn, obs_as_tensor, safe_mean
+from stable_baselines3.common.utils import (
+    explained_variance,
+    get_schedule_fn,
+    obs_as_tensor,
+    safe_mean,
+)
 from stable_baselines3.common.vec_env import VecEnv
-
-from sb3_contrib.common.recurrent.buffers import RecurrentDictRolloutBuffer, RecurrentRolloutBuffer
-from sb3_contrib.common.recurrent.policies import RecurrentActorCriticPolicy
-from sb3_contrib.common.recurrent.type_aliases import RNNStates
-from sb3_contrib.ppo_recurrent.policies import CnnLstmPolicy, MlpLstmPolicy, MultiInputLstmPolicy
-
-SelfRecurrentPPO = TypeVar("SelfRecurrentPPO", bound="RecurrentPPO")
+from stable_baselines3.ppo_recurrent.policies import (
+    CnnLstmPolicy,
+    MlpLstmPolicy,
+    MultiInputLstmPolicy,
+)
 
 
 class RecurrentPPO(OnPolicyAlgorithm):
@@ -445,14 +456,14 @@ class RecurrentPPO(OnPolicyAlgorithm):
             self.logger.record("train/clip_range_vf", clip_range_vf)
 
     def learn(
-        self: SelfRecurrentPPO,
+        self: Self["RecurrentPPO"],
         total_timesteps: int,
         callback: MaybeCallback = None,
         log_interval: int = 1,
         tb_log_name: str = "RecurrentPPO",
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
-    ) -> SelfRecurrentPPO:
+    ) -> Self["RecurrentPPO"]:
         iteration = 0
 
         total_timesteps, callback = self._setup_learn(
