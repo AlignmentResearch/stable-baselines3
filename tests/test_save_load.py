@@ -18,6 +18,8 @@ from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import FakeImageEnv, IdentityEnv, IdentityEnvBox
+from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.save_util import load_from_pkl, open_path, save_to_pkl
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -182,10 +184,12 @@ def test_set_env(tmp_path, model_class):
     env4 = DummyVecEnv([lambda: select_env(model_class) for _ in range(2)])
 
     kwargs = {}
-    if model_class in {DQN, DDPG, SAC, TD3}:
+    if issubclass(model_class, OffPolicyAlgorithm):
         kwargs = dict(learning_starts=50, train_freq=4)
-    elif model_class in {A2C, PPO}:
+    elif issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(n_steps=64)
+    else:
+        raise TypeError(f"Unknown model class: {model_class}")
 
     # create model
     model = model_class("MlpPolicy", env, policy_kwargs=dict(net_arch=[16]), **kwargs)

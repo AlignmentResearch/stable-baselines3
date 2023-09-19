@@ -44,14 +44,19 @@ def space_to_example(
 
     if isinstance(space, spaces.Box):
         space_shape = space.shape
+        space_dtype = th.float32
     elif isinstance(space, spaces.Discrete):
         space_shape = ()
+        space_dtype = th.long
+    elif isinstance(space, spaces.MultiDiscrete):
+        space_shape = (len(space.nvec),)
+        space_dtype = th.long
     else:
         raise TypeError(f"Unknown space type {type(space)} for {space}")
 
     if ensure_non_batch_dim and not space_shape:
         space_shape = (1,)
-    return th.zeros((*batch_shape, *space_shape), dtype=th.float32, device=device)
+    return th.zeros((*batch_shape, *space_shape), dtype=space_dtype, device=device)
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
@@ -161,7 +166,13 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         if data.rewards is None:
             raise ValueError("Recorded samples must contain a reward")
         new_data = dataclasses.replace(data, actions=data.actions.reshape((self.n_envs, self.action_dim)))
-        ot.tree_map(lambda buf, x: buf[self.pos].copy_(x, non_blocking=True), self.data, new_data, namespace=NS)
+
+        ot.tree_map(
+            lambda buf, x: buf[self.pos].copy_(x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1), non_blocking=True),
+            self.data,
+            new_data,
+            namespace=NS,
+        )
         # Increment pos
         self.pos += 1
         if self.pos == self.buffer_size:
