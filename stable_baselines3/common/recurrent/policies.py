@@ -361,11 +361,13 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
+        action_batch_shape = actions.shape[:-1]
         distribution = self._get_action_dist_from_latent(latent_pi)
-        log_prob = distribution.log_prob(actions)
+        distribution_shape = distribution.distribution.batch_shape + distribution.distribution.event_shape
+        log_prob = distribution.log_prob(actions.view(distribution_shape))
         values = self.value_net(latent_vf)
         entropy = distribution.entropy()
-        return (values, log_prob, entropy)
+        return (values.view(action_batch_shape), log_prob.view(action_batch_shape), entropy.view(action_batch_shape))
 
     def _predict(
         self,

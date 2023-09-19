@@ -389,9 +389,6 @@ class RecurrentPPO(OnPolicyAlgorithm):
             # Do a complete pass on the rollout buffer
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions
-                if isinstance(self.action_space, spaces.Discrete):
-                    # Convert discrete action from float to long
-                    actions = rollout_data.actions.long().flatten()
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:

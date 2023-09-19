@@ -10,6 +10,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import BitFlippingEnv, SimpleMultiObsEnv
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
@@ -229,7 +230,7 @@ def test_multiprocessing(model_class):
                 features_extractor_kwargs=dict(cnn_output_dim=32),
             ),
         )
-    elif model_class in {SAC, TD3, DQN}:
+    elif issubclass(model_class, OffPolicyAlgorithm):
         kwargs = dict(
             buffer_size=1000,
             policy_kwargs=dict(

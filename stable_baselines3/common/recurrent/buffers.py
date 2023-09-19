@@ -105,7 +105,11 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         self.returns = th.zeros(batch_shape, dtype=th.float32, device=device)
         self.data = RecurrentRolloutBufferData(
             observations=space_to_example(batch_shape, self.observation_space, device=device, ensure_non_batch_dim=True),
-            actions=th.zeros((*batch_shape, self.action_dim), dtype=th.float32, device=device),
+            actions=th.zeros(
+                (*batch_shape, self.action_dim),
+                dtype=th.long if isinstance(self.action_space, (spaces.Discrete, spaces.MultiDiscrete)) else th.float32,
+                device=device,
+            ),
             rewards=th.zeros(batch_shape, dtype=th.float32, device=device),
             episode_starts=th.zeros(batch_shape, dtype=th.bool, device=device),
             values=th.zeros(batch_shape, dtype=th.float32, device=device),
