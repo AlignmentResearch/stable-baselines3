@@ -8,6 +8,7 @@ from gymnasium import spaces
 
 from stable_baselines3 import A2C, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.envs import FakeImageEnv
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.preprocessing import (
     is_image_space,
     is_image_space_channels_first,
@@ -351,9 +352,7 @@ def test_image_like_input(model_class, normalize_images):
         ),
         seed=1,
     )
-    policy = "CnnLstmPolicy" if model_class == RecurrentPPO else "CnnPolicy"
-
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs.update(dict(n_steps=64))
     else:
         # Avoid memory error when using replay buffer

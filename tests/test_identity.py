@@ -10,6 +10,7 @@ from stable_baselines3.common.envs import (
 )
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.noise import NormalActionNoise
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 DIM = 4
@@ -39,7 +40,7 @@ def test_discrete(model_class, env):
 def test_continuous(model_class):
     env = IdentityEnvBox(eps=0.5)
 
-    n_steps = {A2C: 2000, PPO: 2000, SAC: 400, TD3: 400, DDPG: 400}[model_class]
+    n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
     kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
 

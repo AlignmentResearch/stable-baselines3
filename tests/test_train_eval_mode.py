@@ -127,6 +127,7 @@ CLONE_HELPERS = {
     SAC: clone_sac_batch_norm_stats,
     TD3: clone_td3_batch_norm_stats,
     PPO: clone_on_policy_batch_norm,
+    RecurrentPPO: clone_on_policy_batch_norm,
 }
 
 

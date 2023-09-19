@@ -10,6 +10,7 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import BitFlippingEnv, SimpleMultiObsEnv
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
     SubprocVecEnv,
@@ -132,7 +133,7 @@ def test_consistency(model_class):
     kwargs = {}
     n_steps = 256
 
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(
             n_steps=128,
         )
@@ -176,7 +177,7 @@ def test_dict_spaces(model_class, channel_last):
     kwargs = {}
     n_steps = 256
 
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(
             n_steps=128,
             policy_kwargs=dict(
@@ -220,7 +221,7 @@ def test_multiprocessing(model_class):
     kwargs = {}
     n_steps = 128
 
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(
             n_steps=128,
             policy_kwargs=dict(
@@ -261,7 +262,7 @@ def test_dict_vec_framestack(model_class, channel_last):
     kwargs = {}
     n_steps = 256
 
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(
             n_steps=128,
             policy_kwargs=dict(
@@ -303,7 +304,7 @@ def test_vec_normalize(model_class):
     kwargs = {}
     n_steps = 256
 
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs = dict(
             n_steps=128,
             policy_kwargs=dict(
