@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
+import optree as ot
 import torch as th
 import torch.nn.functional as F
 from gymnasium import spaces
@@ -13,6 +14,7 @@ from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
 from stable_baselines3.common.recurrent.buffers import (
     RecurrentRolloutBuffer,
     index_into_pytree,
@@ -289,15 +291,20 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
-                obs_tensor = obs_as_tensor(self._last_obs, self.device)
+                obs_tensor = ot.tree_map(lambda x: x.unsqueeze(0), obs_as_tensor(self._last_obs, self.device), namespace=NS)
                 episode_starts = th.as_tensor(self._last_episode_starts).to(dtype=th.bool, device=self.device)
-                actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
+                actions, values, log_probs, lstm_states = self.policy.forward(
+                    obs_tensor, lstm_states, episode_starts.unsqueeze(0)
+                )
+                actions = actions.squeeze(0)
+                values = values.squeeze(0)
+                log_probs = log_probs.squeeze(0)
 
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
             if isinstance(self.action_space, spaces.Box):
-                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -323,7 +330,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     and infos[idx].get("terminal_observation") is not None
                     and infos[idx].get("TimeLimit.truncated", False)
                 ):
-                    terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
+                    terminal_obs, _ = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])
                     with th.no_grad():
                         terminal_lstm_state = (
                             lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
@@ -331,9 +338,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
                         )
                         # terminal_lstm_state = None
                         episode_starts = th.zeros((1,), dtype=th.bool, device=self.device)
-                        terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
-                            0
-                        ].squeeze(-1)
+                        terminal_value = self.policy.predict_values(
+                            ot.tree_map(lambda x: x.unsqueeze(0), terminal_obs, namespace=NS),
+                            terminal_lstm_state,
+                            episode_starts.unsqueeze(0),
+                        )[0].squeeze(0)
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
@@ -355,7 +364,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
         with th.no_grad():
             # Compute value for the last timestep
             episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states.vf, episode_starts)
+            values = self.policy.predict_values(
+                ot.tree_map(lambda x: x.unsqueeze(0), obs_as_tensor(new_obs, self.device), namespace=NS),
+                lstm_states.vf,
+                episode_starts,
+            )
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 

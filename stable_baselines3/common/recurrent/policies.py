@@ -116,6 +116,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         )
 
         self.lstm_kwargs = lstm_kwargs or {}
+        assert not self.lstm_kwargs.get("batch_first", False)
         self.shared_lstm = shared_lstm
         self.enable_critic_lstm = enable_critic_lstm
         self.lstm_actor = nn.LSTM(
@@ -186,38 +187,30 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         :param lstm: LSTM object.
         :return: LSTM output and updated LSTM states.
         """
-        # LSTM logic
-        # (sequence length, batch size, features dim)
-        # (batch size = n_envs for data collection or n_seq when doing gradient update)
-        n_seq = lstm_states[0].shape[1]
-        # Batch to sequence
-        # (padded batch size, features_dim) -> (n_seq, max length, features_dim) -> (max length, n_seq, features_dim)
-        # note: max length (max sequence length) is always 1 during data collection
-        features_sequence = features.reshape((n_seq, -1, lstm.input_size)).swapaxes(0, 1)
-        episode_starts = episode_starts.reshape((n_seq, -1)).swapaxes(0, 1)
 
         # If we don't have to reset the state in the middle of a sequence
         # we can avoid the for loop, which speeds up things
-        if th.all(episode_starts == 0.0):
-            lstm_output, lstm_states = lstm(features_sequence, lstm_states)
-            lstm_output = th.flatten(lstm_output.transpose(0, 1), start_dim=0, end_dim=1)
+        assert episode_starts.ndim == 2
+        if not th.any(episode_starts[1:]):
+            initial_is_not_reset = (~episode_starts[0]).unsqueeze(-1)
+            lstm_states = (lstm_states[0] * initial_is_not_reset, lstm_states[1] * initial_is_not_reset)
+            lstm_output, lstm_states = lstm(features, lstm_states)
             return lstm_output, lstm_states
 
         lstm_output = []
         # Iterate over the sequence
-        for features, episode_start in zip_strict(features_sequence, episode_starts):
+        for features, episode_start in zip_strict(features, episode_starts):
+            is_not_reset = (~episode_start).unsqueeze(-1)
             hidden, lstm_states = lstm(
-                features.unsqueeze(dim=0),
+                features,
                 (
                     # Reset the states at the beginning of a new episode
-                    (~episode_start).view(1, n_seq, 1) * lstm_states[0],
-                    (~episode_start).view(1, n_seq, 1) * lstm_states[1],
+                    is_not_reset * lstm_states[0],
+                    is_not_reset * lstm_states[1],
                 ),
             )
-            lstm_output += [hidden]
-        # Sequence to batch
-        # (sequence length, n_seq, lstm_out_dim) -> (batch_size, lstm_out_dim)
-        lstm_output = th.flatten(th.cat(lstm_output).transpose(0, 1), start_dim=0, end_dim=1)
+            lstm_output.append(hidden)
+        lstm_output = th.cat(lstm_output)
         return lstm_output, lstm_states
 
     def forward(
