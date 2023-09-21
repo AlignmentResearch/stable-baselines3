@@ -14,10 +14,7 @@ from stable_baselines3.common.buffers import (
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
-from stable_baselines3.common.recurrent.buffers import (
-    RecurrentRolloutBuffer,
-    RecurrentRolloutBufferData,
-)
+from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     ReplayBufferSamples,
@@ -159,7 +156,7 @@ def test_device_buffer(replay_buffer_cls, device):
         elif replay_buffer_cls == RecurrentRolloutBuffer:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             hidden_states = {"a": {"b": th.zeros(2, buffer.n_envs, 4)}}
-            buffer.add(RecurrentRolloutBufferData(obs, action, reward, episode_start, values, log_prob, hidden_states))
+            buffer.add(obs, action, reward, episode_start, values, log_prob, hidden_states)
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
