@@ -242,7 +242,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             returns=self.pad_and_flatten(self.returns[batch_inds]),
             lstm_states=RNNStates(lstm_states_pi, lstm_states_vf),
             episode_starts=self.pad_and_flatten(self.episode_starts[batch_inds]),
-            mask=self.pad_and_flatten(th.ones_like(self.returns[batch_inds])),
+            mask=self.pad_and_flatten(th.ones(self.returns[batch_inds].shape, dtype=th.bool, device=self.device)),
         )
 
 
@@ -391,5 +391,5 @@ class RecurrentDictRolloutBuffer(DictRolloutBuffer):
             returns=self.pad_and_flatten(self.returns[batch_inds]),
             lstm_states=RNNStates(lstm_states_pi, lstm_states_vf),
             episode_starts=self.pad_and_flatten(self.episode_starts[batch_inds]),
-            mask=self.pad_and_flatten(th.ones_like(self.returns[batch_inds])),
+            mask=self.pad_and_flatten(th.ones(self.returns[batch_inds].shape, dtype=th.bool, device=self.device)),
         )
