@@ -366,11 +366,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -395,11 +395,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         # state : (n_layers, n_envs, dim)
         if state is None:
             # Initialize hidden states to zeros
-            state = np.concatenate([np.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
+            state = th.cat([th.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
             state = (state, state)
 
         if episode_start is None:
-            episode_start = np.array([False for _ in range(n_envs)])
+            episode_start = th.zeros(n_envs, dtype=th.bool)
 
         with th.no_grad():
             # Convert to PyTorch tensors
@@ -422,7 +422,9 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             else:
                 # Actions could be on arbitrary scale, so clip the actions to avoid
                 # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                actions = th.clip(
+                    actions, th.as_tensor(self.action_space.low).to(actions), th.as_tensor(self.action_space.high).to(actions)
+                )
 
         # Remove batch dimension if needed
         if not vectorized_env:
