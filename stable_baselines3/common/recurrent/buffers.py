@@ -144,21 +144,6 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
         super().add(*(th.as_tensor(a) for a in args), **kwargs)
 
-    @staticmethod
-    def swap_and_flatten(arr: np.ndarray) -> np.ndarray:
-        """
-        Swap and then flatten axes 0 (buffer_size) and 1 (n_envs)
-        to convert shape from [n_steps, n_envs, ...] (when ... is the shape of the features)
-        to [n_steps * n_envs, ...] (which maintain the order)
-
-        :param arr:
-        :return:
-        """
-        shape = arr.shape
-        if len(shape) < 3:
-            shape = (*shape, 1)
-        return arr.swapaxes(0, 1).reshape(shape[0] * shape[1], *shape[2:])
-
     def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
 
