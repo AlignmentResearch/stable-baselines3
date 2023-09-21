@@ -13,7 +13,7 @@ from stable_baselines3.common.buffers import (
 )
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
