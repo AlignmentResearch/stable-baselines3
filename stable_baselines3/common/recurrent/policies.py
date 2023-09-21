@@ -403,17 +403,9 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
         with th.no_grad():
             # Convert to PyTorch tensors
-            states = th.tensor(state[0], dtype=th.float32, device=self.device), th.tensor(
-                state[1], dtype=th.float32, device=self.device
+            actions, state = self._predict(
+                observation, lstm_states=state, episode_starts=episode_start, deterministic=deterministic
             )
-            episode_starts = th.tensor(episode_start, dtype=th.bool, device=self.device)
-            actions, states = self._predict(
-                observation, lstm_states=states, episode_starts=episode_starts, deterministic=deterministic
-            )
-            states = (states[0].cpu().numpy(), states[1].cpu().numpy())
-
-        # Convert to numpy
-        actions = actions.cpu().numpy()
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:
@@ -430,7 +422,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         if not vectorized_env:
             actions = actions.squeeze(axis=0)
 
-        return actions, states
+        return actions, state
 
 
 class RecurrentActorCriticCnnPolicy(RecurrentActorCriticPolicy):
