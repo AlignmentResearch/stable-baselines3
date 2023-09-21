@@ -2,6 +2,7 @@ from functools import partial
 from typing import Callable, Generator, Optional, Tuple, Union
 
 import numpy as np
+import optree as ot
 import torch as th
 from gymnasium import spaces
 
@@ -127,19 +128,19 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
     def reset(self):
         super().reset()
-        self.hidden_states_pi = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.cell_states_pi = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.hidden_states_vf = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.cell_states_vf = np.zeros(self.hidden_state_shape, dtype=np.float32)
+        self.hidden_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.cell_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.hidden_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.cell_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32)
 
     def add(self, *args, lstm_states: RNNStates, **kwargs) -> None:
         """
         :param hidden_states: LSTM cell and hidden state
         """
-        self.hidden_states_pi[self.pos] = np.array(lstm_states.pi[0].cpu().numpy())
-        self.cell_states_pi[self.pos] = np.array(lstm_states.pi[1].cpu().numpy())
-        self.hidden_states_vf[self.pos] = np.array(lstm_states.vf[0].cpu().numpy())
-        self.cell_states_vf[self.pos] = np.array(lstm_states.vf[1].cpu().numpy())
+        self.hidden_states_pi[self.pos].copy_(lstm_states.pi[0], non_blocking=True)
+        self.cell_states_pi[self.pos].copy_(lstm_states.pi[1], non_blocking=True)
+        self.hidden_states_vf[self.pos].copy_(lstm_states.vf[0], non_blocking=True)
+        self.cell_states_vf[self.pos].copy_(lstm_states.vf[1], non_blocking=True)
 
         super().add(*(th.as_tensor(a) for a in args), **kwargs)
 
@@ -240,12 +241,12 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
         )
         lstm_states_pi = (
-            self.to_device(th.from_numpy(lstm_states_pi[0])).contiguous(),
-            self.to_device(th.from_numpy(lstm_states_pi[1])).contiguous(),
+            self.to_device((lstm_states_pi[0])).contiguous(),
+            self.to_device((lstm_states_pi[1])).contiguous(),
         )
         lstm_states_vf = (
-            self.to_device(th.from_numpy(lstm_states_vf[0])).contiguous(),
-            self.to_device(th.from_numpy(lstm_states_vf[1])).contiguous(),
+            self.to_device((lstm_states_vf[0])).contiguous(),
+            self.to_device((lstm_states_vf[1])).contiguous(),
         )
         return RecurrentRolloutBufferSamples(
             # (batch_size, obs_dim) -> (n_seq, max_length, obs_dim) -> (n_seq * max_length, obs_dim)
@@ -294,21 +295,21 @@ class RecurrentDictRolloutBuffer(DictRolloutBuffer):
 
     def reset(self):
         super().reset()
-        self.hidden_states_pi = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.cell_states_pi = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.hidden_states_vf = np.zeros(self.hidden_state_shape, dtype=np.float32)
-        self.cell_states_vf = np.zeros(self.hidden_state_shape, dtype=np.float32)
+        self.hidden_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.cell_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.hidden_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32)
+        self.cell_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32)
 
     def add(self, *args, lstm_states: RNNStates, **kwargs) -> None:
         """
         :param hidden_states: LSTM cell and hidden state
         """
-        self.hidden_states_pi[self.pos] = np.array(lstm_states.pi[0].cpu().numpy())
-        self.cell_states_pi[self.pos] = np.array(lstm_states.pi[1].cpu().numpy())
-        self.hidden_states_vf[self.pos] = np.array(lstm_states.vf[0].cpu().numpy())
-        self.cell_states_vf[self.pos] = np.array(lstm_states.vf[1].cpu().numpy())
+        self.hidden_states_pi[self.pos].copy_(lstm_states.pi[0], non_blocking=True)
+        self.cell_states_pi[self.pos].copy_(lstm_states.pi[1], non_blocking=True)
+        self.hidden_states_vf[self.pos].copy_(lstm_states.vf[0], non_blocking=True)
+        self.cell_states_vf[self.pos].copy_(lstm_states.vf[1], non_blocking=True)
 
-        super().add(*args, **kwargs)
+        super().add(*ot.tree_map(th.as_tensor, args), **kwargs)
 
     def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentDictRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
@@ -386,12 +387,12 @@ class RecurrentDictRolloutBuffer(DictRolloutBuffer):
             self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
         )
         lstm_states_pi = (
-            self.to_device(th.from_numpy(lstm_states_pi[0])).contiguous(),
-            self.to_device(th.from_numpy(lstm_states_pi[1])).contiguous(),
+            self.to_device((lstm_states_pi[0])).contiguous(),
+            self.to_device((lstm_states_pi[1])).contiguous(),
         )
         lstm_states_vf = (
-            self.to_device(th.from_numpy(lstm_states_vf[0])).contiguous(),
-            self.to_device(th.from_numpy(lstm_states_vf[1])).contiguous(),
+            self.to_device((lstm_states_vf[0])).contiguous(),
+            self.to_device((lstm_states_vf[1])).contiguous(),
         )
 
         observations = {key: self.pad(obs[batch_inds]) for (key, obs) in self.observations.items()}

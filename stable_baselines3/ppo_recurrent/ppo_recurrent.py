@@ -258,8 +258,6 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 episode_starts = th.tensor(self._last_episode_starts, dtype=th.bool, device=self.device)
                 actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
 
-            actions = actions.cpu().numpy()
-
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
