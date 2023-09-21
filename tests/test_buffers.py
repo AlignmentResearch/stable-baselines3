@@ -4,9 +4,6 @@ import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces
-from third_party.stable_baselines3.stable_baselines3.common.pytree_dataclass import (
-    tree_flatten,
-)
 
 from stable_baselines3.common.buffers import (
     DictReplayBuffer,
@@ -16,6 +13,7 @@ from stable_baselines3.common.buffers import (
 )
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.pytree_dataclass import tree_flatten
 from stable_baselines3.common.recurrent.buffers import (
     RecurrentDictRolloutBuffer,
     RecurrentRolloutBuffer,
