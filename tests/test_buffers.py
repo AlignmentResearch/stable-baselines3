@@ -13,12 +13,8 @@ from stable_baselines3.common.buffers import (
 )
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE
-from stable_baselines3.common.recurrent.buffers import (
-    RecurrentDictRolloutBuffer,
-    RecurrentRolloutBuffer,
-)
-from stable_baselines3.common.recurrent.type_aliases import RNNStates
+from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
+from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     ReplayBufferSamples,
@@ -136,14 +132,14 @@ def test_device_buffer(replay_buffer_cls, device):
         DictRolloutBuffer: DummyDictEnv,
         ReplayBuffer: DummyEnv,
         DictReplayBuffer: DummyDictEnv,
-        RecurrentRolloutBuffer: DummyEnv,
-        RecurrentDictRolloutBuffer: DummyDictEnv,
+        RecurrentRolloutBuffer: DummyDictEnv,
     }[replay_buffer_cls]
     env = make_vec_env(env)
 
     if replay_buffer_cls == RecurrentRolloutBuffer:
+        hidden_states = {"a": {"b": th.zeros(2, 4)}}
         buffer = RecurrentRolloutBuffer(
-            100, env.observation_space, env.action_space, hidden_state_shape=(100, 1, env.num_envs, 4), device=device
+            100, env.observation_space, env.action_space, hidden_state_example=hidden_states, device=device
         )
     else:
         buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
@@ -159,9 +155,8 @@ def test_device_buffer(replay_buffer_cls, device):
             buffer.add(obs, action, reward, episode_start, values, log_prob)
         elif replay_buffer_cls == RecurrentRolloutBuffer:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
-            one_lstm_states = (th.zeros((1, env.num_envs, 4)), th.zeros((1, env.num_envs, 4)))
-            hidden_states = RNNStates(one_lstm_states, one_lstm_states)
-            buffer.add(obs, action, reward, episode_start, values, log_prob, lstm_states=hidden_states)
+            hidden_states = {"a": {"b": th.zeros(2, buffer.n_envs, 4)}}
+            buffer.add(obs, action, reward, episode_start, values, log_prob, hidden_states)
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
