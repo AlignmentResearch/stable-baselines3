@@ -1,29 +1,22 @@
 import sys
 import time
-import warnings
 from copy import deepcopy
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
-import optree as ot
 import torch as th
-import torch.nn.functional as F
 from gymnasium import spaces
 
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
 from stable_baselines3.common.recurrent.buffers import (
+    RecurrentDictRolloutBuffer,
     RecurrentRolloutBuffer,
-    index_into_pytree,
 )
-from stable_baselines3.common.recurrent.policies import (
-    LSTMStates,
-    RecurrentActorCriticPolicy,
-)
-from stable_baselines3.common.recurrent.type_aliases import RecurrentRolloutBufferData
+from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
@@ -101,7 +94,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
-        batch_size: int = 128,
+        batch_size: Optional[int] = 128,
         n_epochs: int = 10,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -148,31 +141,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 spaces.MultiBinary,
             ),
         )
-        # Sanity check, otherwise it will lead to noisy gradient and NaN
-        # because of the advantage normalization
-        if normalize_advantage:
-            assert (
-                batch_size > 1
-            ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
-        if self.env is not None:
-            # Check that `n_steps * n_envs > 1` to avoid NaN
-            # when doing advantage normalization
-            buffer_size = self.env.num_envs * self.n_steps
-            assert buffer_size > 1 or (
-                not normalize_advantage
-            ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
-            # Check that the rollout buffer size is a multiple of the mini-batch size
-            untruncated_batches = buffer_size // batch_size
-            if buffer_size % batch_size > 0:
-                warnings.warn(
-                    f"You have specified a mini-batch size of {batch_size},"
-                    f" but because the `RolloutBuffer` is of size `n_steps * n_envs = {buffer_size}`,"
-                    f" after every {untruncated_batches} untruncated mini-batches,"
-                    f" there will be a truncated mini-batch of size {buffer_size % batch_size}\n"
-                    f"We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.\n"
-                    f"Info: (n_steps={self.n_steps} and n_envs={self.env.num_envs})"
-                )
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.clip_range = clip_range
@@ -187,6 +156,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
+
+        buffer_cls = RecurrentDictRolloutBuffer if isinstance(self.observation_space, spaces.Dict) else RecurrentRolloutBuffer
 
         self.policy = self.policy_class(
             self.observation_space,
@@ -206,7 +177,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         single_hidden_state_shape = (lstm.num_layers, self.n_envs, lstm.hidden_size)
         # hidden and cell states for actor and critic
-        self._last_lstm_states = LSTMStates(
+        self._last_lstm_states = RNNStates(
             (
                 th.zeros(single_hidden_state_shape, device=self.device),
                 th.zeros(single_hidden_state_shape, device=self.device),
@@ -217,23 +188,13 @@ class RecurrentPPO(OnPolicyAlgorithm):
             ),
         )
 
-        single_1envhidden_state_shape = (lstm.num_layers, lstm.hidden_size)
-        example_lstm_states = LSTMStates(
-            (
-                th.zeros(single_1envhidden_state_shape, device=self.device),
-                th.zeros(single_1envhidden_state_shape, device=self.device),
-            ),
-            (
-                th.zeros(single_1envhidden_state_shape, device=self.device),
-                th.zeros(single_1envhidden_state_shape, device=self.device),
-            ),
-        )
+        hidden_state_buffer_shape = (self.n_steps, lstm.num_layers, self.n_envs, lstm.hidden_size)
 
-        self.rollout_buffer = RecurrentRolloutBuffer(
+        self.rollout_buffer = buffer_cls(
             self.n_steps,
             self.observation_space,
             self.action_space,
-            example_lstm_states,
+            hidden_state_buffer_shape,
             self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
@@ -268,7 +229,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
         :return: True if function returned with at least `n_rollout_steps`
             collected, False if callback terminated rollout prematurely.
         """
-        assert isinstance(rollout_buffer, RecurrentRolloutBuffer), f"{rollout_buffer} doesn't support recurrent policy"
+        assert isinstance(
+            rollout_buffer, (RecurrentRolloutBuffer, RecurrentDictRolloutBuffer)
+        ), f"{rollout_buffer} doesn't support recurrent policy"
 
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
@@ -291,20 +254,17 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
-                obs_tensor = ot.tree_map(lambda x: x.unsqueeze(0), obs_as_tensor(self._last_obs, self.device), namespace=NS)
-                episode_starts = th.as_tensor(self._last_episode_starts).to(dtype=th.bool, device=self.device)
-                actions, values, log_probs, lstm_states = self.policy.forward(
-                    obs_tensor, lstm_states, episode_starts.unsqueeze(0)
-                )
-                actions = actions.squeeze(0)
-                values = values.squeeze(0)
-                log_probs = log_probs.squeeze(0)
+                obs_tensor = obs_as_tensor(self._last_obs, self.device)
+                episode_starts = th.tensor(self._last_episode_starts, dtype=th.bool, device=self.device)
+                actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
+
+            actions = actions.cpu().numpy()
 
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
             if isinstance(self.action_space, spaces.Box):
-                clipped_actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
+                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -330,31 +290,27 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     and infos[idx].get("terminal_observation") is not None
                     and infos[idx].get("TimeLimit.truncated", False)
                 ):
-                    terminal_obs, _ = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])
+                    terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
                         terminal_lstm_state = (
                             lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
                             lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
                         )
                         # terminal_lstm_state = None
-                        episode_starts = th.zeros((1,), dtype=th.bool, device=self.device)
-                        terminal_value = self.policy.predict_values(
-                            ot.tree_map(lambda x: x.unsqueeze(0), terminal_obs, namespace=NS),
-                            terminal_lstm_state,
-                            episode_starts.unsqueeze(0),
-                        )[0].squeeze(0)
+                        episode_starts = th.tensor([False], dtype=th.bool, device=self.device)
+                        terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
+                            0
+                        ].squeeze()
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
-                RecurrentRolloutBufferData(
-                    self._last_obs,
-                    actions,
-                    rewards,
-                    self._last_episode_starts,
-                    values.squeeze(-1),
-                    log_probs,
-                    hidden_states=self._last_lstm_states,
-                )
+                self._last_obs,
+                actions,
+                rewards,
+                self._last_episode_starts,
+                values,
+                log_probs,
+                lstm_states=self._last_lstm_states,
             )
 
             self._last_obs = new_obs
@@ -363,12 +319,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
-            values = self.policy.predict_values(
-                ot.tree_map(lambda x: x.unsqueeze(0), obs_as_tensor(new_obs, self.device), namespace=NS),
-                lstm_states.vf,
-                episode_starts,
-            )
+            episode_starts = th.tensor(dones, dtype=th.bool, device=self.device)
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states.vf, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
@@ -402,6 +354,12 @@ class RecurrentPPO(OnPolicyAlgorithm):
             # Do a complete pass on the rollout buffer
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions
+                if isinstance(self.action_space, spaces.Discrete):
+                    # Convert discrete action from float to long
+                    actions = rollout_data.actions.long().flatten()
+
+                # Convert mask from float to bool
+                mask = rollout_data.mask > 1e-8
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
@@ -410,15 +368,15 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 values, log_prob, entropy = self.policy.evaluate_actions(
                     rollout_data.observations,
                     actions,
-                    index_into_pytree(0, rollout_data.hidden_states),
+                    rollout_data.lstm_states,
                     rollout_data.episode_starts,
                 )
 
+                values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
-                # Normalization does not make sense if mini batchsize == 1, see GH issue #325
-                if self.normalize_advantage and len(advantages) > 1:
-                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                if self.normalize_advantage:
+                    advantages = (advantages - advantages[mask].mean()) / (advantages[mask].std() + 1e-8)
 
                 # ratio between old and new policy, should be one at the first iteration
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
@@ -426,32 +384,34 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # clipped surrogate loss
                 policy_loss_1 = advantages * ratio
                 policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
-                policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
+                policy_loss = -th.mean(th.min(policy_loss_1, policy_loss_2)[mask])
 
                 # Logging
                 pg_losses.append(policy_loss.item())
-                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
+                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()[mask]).item()
                 clip_fractions.append(clip_fraction)
 
                 if self.clip_range_vf is None:
                     # No clipping
                     values_pred = values
                 else:
-                    # Clip the difference between old and new value
+                    # Clip the different between old and new value
                     # NOTE: this depends on the reward scaling
                     values_pred = rollout_data.old_values + th.clamp(
                         values - rollout_data.old_values, -clip_range_vf, clip_range_vf
                     )
                 # Value loss using the TD(gae_lambda) target
-                value_loss = F.mse_loss(rollout_data.returns, values_pred)
+                # Mask padded sequences
+                value_loss = th.mean(((rollout_data.returns - values_pred) ** 2)[mask])
+
                 value_losses.append(value_loss.item())
 
                 # Entropy loss favor exploration
                 if entropy is None:
                     # Approximate entropy when no analytical form
-                    entropy_loss = -th.mean(-log_prob)
+                    entropy_loss = -th.mean(-log_prob[mask])
                 else:
-                    entropy_loss = -th.mean(entropy)
+                    entropy_loss = -th.mean(entropy[mask])
 
                 entropy_losses.append(entropy_loss.item())
 
@@ -463,7 +423,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # and Schulman blog: http://joschu.net/blog/kl-approx.html
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_div = th.mean(((th.exp(log_ratio) - 1) - log_ratio)[mask]).cpu().numpy()
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
@@ -492,7 +452,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
         self.logger.record("train/loss", loss.item())
-        self.logger.record("train/explained_variance", explained_var.item())
+        self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
 

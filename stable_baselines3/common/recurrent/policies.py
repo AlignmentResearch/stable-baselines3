@@ -1,15 +1,13 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
-import optree as ot
+import numpy as np
 import torch as th
 from gymnasium import spaces
 from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
-from stable_baselines3.common.pytree_dataclass import dataclass_frozen_pytree
-from stable_baselines3.common.recurrent.buffers import space_to_example
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
@@ -17,14 +15,8 @@ from stable_baselines3.common.torch_layers import (
     MlpExtractor,
     NatureCNN,
 )
-from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
+from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import zip_strict
-
-
-@dataclass_frozen_pytree
-class LSTMStates:
-    pi: th.Tensor
-    vf: th.Tensor
 
 
 class RecurrentActorCriticPolicy(ActorCriticPolicy):
@@ -116,7 +108,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         )
 
         self.lstm_kwargs = lstm_kwargs or {}
-        assert not self.lstm_kwargs.get("batch_first", False)
         self.shared_lstm = shared_lstm
         self.enable_critic_lstm = enable_critic_lstm
         self.lstm_actor = nn.LSTM(
@@ -168,8 +159,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             device=self.device,
         )
 
-        self.observation_example = space_to_example((), self.observation_space)
-
     @staticmethod
     def _process_sequence(
         features: th.Tensor,
@@ -187,39 +176,47 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         :param lstm: LSTM object.
         :return: LSTM output and updated LSTM states.
         """
+        # LSTM logic
+        # (sequence length, batch size, features dim)
+        # (batch size = n_envs for data collection or n_seq when doing gradient update)
+        n_seq = lstm_states[0].shape[1]
+        # Batch to sequence
+        # (padded batch size, features_dim) -> (n_seq, max length, features_dim) -> (max length, n_seq, features_dim)
+        # note: max length (max sequence length) is always 1 during data collection
+        features_sequence = features.reshape((n_seq, -1, lstm.input_size)).swapaxes(0, 1)
+        episode_starts = episode_starts.reshape((n_seq, -1)).swapaxes(0, 1)
 
         # If we don't have to reset the state in the middle of a sequence
         # we can avoid the for loop, which speeds up things
-        assert episode_starts.ndim == 2
-        if not th.any(episode_starts[1:]):
-            initial_is_not_reset = (~episode_starts[0]).unsqueeze(-1)
-            lstm_states = (lstm_states[0] * initial_is_not_reset, lstm_states[1] * initial_is_not_reset)
-            lstm_output, lstm_states = lstm(features, lstm_states)
+        if th.all(episode_starts == 0.0):
+            lstm_output, lstm_states = lstm(features_sequence, lstm_states)
+            lstm_output = th.flatten(lstm_output.transpose(0, 1), start_dim=0, end_dim=1)
             return lstm_output, lstm_states
 
         lstm_output = []
         # Iterate over the sequence
-        for features, episode_start in zip_strict(features, episode_starts):
-            is_not_reset = (~episode_start).unsqueeze(-1)
+        for features, episode_start in zip_strict(features_sequence, episode_starts):
             hidden, lstm_states = lstm(
-                features,
+                features.unsqueeze(dim=0),
                 (
                     # Reset the states at the beginning of a new episode
-                    is_not_reset * lstm_states[0],
-                    is_not_reset * lstm_states[1],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[0],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[1],
                 ),
             )
-            lstm_output.append(hidden)
-        lstm_output = th.cat(lstm_output)
+            lstm_output += [hidden]
+        # Sequence to batch
+        # (sequence length, n_seq, lstm_out_dim) -> (batch_size, lstm_out_dim)
+        lstm_output = th.flatten(th.cat(lstm_output).transpose(0, 1), start_dim=0, end_dim=1)
         return lstm_output, lstm_states
 
     def forward(
         self,
         obs: th.Tensor,
-        lstm_states: LSTMStates,
+        lstm_states: RNNStates,
         episode_starts: th.Tensor,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, LSTMStates]:
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RNNStates]:
         """
         Forward pass in all the networks (actor and critic)
 
@@ -257,7 +254,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         distribution = self._get_action_dist_from_latent(latent_pi)
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
-        return actions, values, log_prob, LSTMStates(lstm_states_pi, lstm_states_vf)
+        return actions, values, log_prob, RNNStates(lstm_states_pi, lstm_states_vf)
 
     def get_distribution(
         self,
@@ -310,20 +307,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
 
-    def extract_features(self, obs: TorchGymObs) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
-        obs_flat = ot.tree_map(lambda x, x_nobatch: x.view(-1, *x_nobatch.shape), obs, self.observation_example, namespace=NS)
-        obs_batch_shapes = ot.tree_map(
-            lambda x, x_nobatch: x.shape[: x.ndim - x_nobatch.ndim], obs, self.observation_example, namespace=NS
-        )
-
-        (obs_batch_shape, *_), _ = ot.tree_flatten(obs_batch_shapes, namespace=NS)
-
-        features_flat = super().extract_features(obs_flat)
-        features = ot.tree_map(lambda x: x.view(*obs_batch_shape, *x.shape[1:]), features_flat, namespace=NS)
-        return features
-
     def evaluate_actions(
-        self, obs: th.Tensor, actions: th.Tensor, lstm_states: LSTMStates, episode_starts: th.Tensor
+        self, obs: th.Tensor, actions: th.Tensor, lstm_states: RNNStates, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Evaluate actions according to the current policy,
@@ -354,13 +339,10 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
-        action_batch_shape = actions.shape[:-1]
         distribution = self._get_action_dist_from_latent(latent_pi)
-        distribution_shape = distribution.mode().shape  # FIXME: don't instantiate a tensor for a shape
-        log_prob = distribution.log_prob(actions.view(distribution_shape))
+        log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf)
-        entropy = distribution.entropy()
-        return (values.view(action_batch_shape), log_prob.view(action_batch_shape), entropy.view(action_batch_shape))
+        return values, log_prob, distribution.entropy()
 
     def _predict(
         self,
@@ -384,11 +366,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
     def predict(
         self,
-        observation: Union[th.Tensor, Dict[str, th.Tensor]],
-        state: Optional[Tuple[th.Tensor, ...]] = None,
-        episode_start: Optional[th.Tensor] = None,
+        observation: Union[np.ndarray, Dict[str, np.ndarray]],
+        state: Optional[Tuple[np.ndarray, ...]] = None,
+        episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
+    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -413,16 +395,25 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         # state : (n_layers, n_envs, dim)
         if state is None:
             # Initialize hidden states to zeros
-            state_component = th.cat([th.zeros(self.lstm_hidden_state_shape)] * n_envs, axis=1)
-            state = (state_component, state_component)
+            state = np.concatenate([np.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
+            state = (state, state)
 
         if episode_start is None:
-            episode_start = th.zeros((n_envs,), dtype=th.bool)
+            episode_start = np.array([False for _ in range(n_envs)])
 
         with th.no_grad():
-            actions, states = self._predict(
-                observation, lstm_states=state, episode_starts=episode_start, deterministic=deterministic
+            # Convert to PyTorch tensors
+            states = th.tensor(state[0], dtype=th.float32, device=self.device), th.tensor(
+                state[1], dtype=th.float32, device=self.device
             )
+            episode_starts = th.tensor(episode_start, dtype=th.bool, device=self.device)
+            actions, states = self._predict(
+                observation, lstm_states=states, episode_starts=episode_starts, deterministic=deterministic
+            )
+            states = (states[0].cpu().numpy(), states[1].cpu().numpy())
+
+        # Convert to numpy
+        actions = actions.cpu().numpy()
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:
@@ -431,7 +422,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             else:
                 # Actions could be on arbitrary scale, so clip the actions to avoid
                 # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = th.clip(actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high))
+                actions = np.clip(actions, self.action_space.low, self.action_space.high)
 
         # Remove batch dimension if needed
         if not vectorized_env:
