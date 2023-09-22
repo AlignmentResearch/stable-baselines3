@@ -16,7 +16,7 @@ def unwrap(v: Optional[T]) -> T:
 LSTMStates = Tuple[th.Tensor, th.Tensor]
 
 
-class RNNStates(PyTreeDataclass[LSTMStates]):
+class RNNStates(PyTreeDataclass[th.Tensor]):
     pi: LSTMStates
     vf: LSTMStates
 

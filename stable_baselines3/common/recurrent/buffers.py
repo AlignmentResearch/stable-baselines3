@@ -209,15 +209,15 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
     # Expose attributes of the RecurrentRolloutBufferData in the top-level to conform to the RolloutBuffer interface
     @property
-    def episode_starts(self) -> th.Tensor:
+    def episode_starts(self) -> th.Tensor:  # type: ignore[override]
         return self.data.episode_starts
 
     @property
-    def values(self) -> th.Tensor:
+    def values(self) -> th.Tensor:  # type: ignore[override]
         return self.data.values
 
     @property
-    def rewards(self) -> th.Tensor:
+    def rewards(self) -> th.Tensor:  # type: ignore[override]
         assert self.data.rewards is not None, "RecurrentRolloutBufferData should store rewards"
         return self.data.rewards
 
@@ -227,7 +227,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         tree_map(lambda x: x.zero_(), self.data)
         super(RolloutBuffer, self).reset()
 
-    def extend(self, *args) -> None:
+    def extend(self, data: RecurrentRolloutBufferData) -> None:  # type: ignore[override]
         """
         Add a new batch of transitions to the buffer
         """
@@ -237,19 +237,20 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         def _is_list(t):
             return isinstance(t, list)
 
-        tensors, _ = tree_flatten(args, is_leaf=_is_list)
+        tensors: list[th.Tensor]
+        tensors, _ = tree_flatten(data, is_leaf=_is_list)  # type: ignore
         len_tensors = len(tensors[0])
         assert all(len(t) == len_tensors for t in tensors), "All tensors must have the same batch size"
         for i in range(len_tensors):
-            self.add(*tree_index(args, i, is_leaf=_is_list))
+            self.add(tree_index(data, i, is_leaf=_is_list))
 
-    def add(self, data: RecurrentRolloutBufferData, **kwargs) -> None:
+    def add(self, data: RecurrentRolloutBufferData, **kwargs) -> None:  # type: ignore[override]
         """
         :param lstm_states: LSTM cell and hidden state
         """
         if data.rewards is None:
             raise ValueError("Recorded samples must contain a reward")
-        new_data = dataclasses.replace(data, actions=data.actions.reshape((self.n_envs, self.action_dim)))
+        new_data = dataclasses.replace(data, actions=data.actions.reshape((self.n_envs, self.action_dim)))  # type: ignore[misc]
 
         tree_map(
             lambda buf, x: buf[self.pos].copy_(x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1), non_blocking=True),
@@ -261,11 +262,13 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         if self.pos == self.buffer_size:
             self.full = True
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
+    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:  # type: ignore[override]
         assert self.full, "Rollout buffer must be full before sampling from it"
 
         lstm_states = tree_map(lambda x: x.swapaxes(1, 2), self.data.lstm_states)
-        data = tree_map(self.swap_and_flatten, dataclasses.replace(self.data, lstm_states=lstm_states))
+        data: RecurrentRolloutBufferData = tree_map(
+            self.swap_and_flatten, dataclasses.replace(self.data, lstm_states=lstm_states)  # type: ignore[misc]
+        )
         returns = self.swap_and_flatten(self.returns)
         advantages = self.swap_and_flatten(self.advantages)
 
@@ -292,7 +295,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             yield self._get_samples(data, returns, advantages, batch_inds, env_change)
             start_idx += batch_size
 
-    def _get_samples(
+    def _get_samples(  # type: ignore[override]
         self,
         data: RecurrentRolloutBufferData,
         returns: th.Tensor,

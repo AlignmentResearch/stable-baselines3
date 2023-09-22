@@ -11,6 +11,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
 )
 
 import optree as ot
@@ -19,6 +20,7 @@ from optree import CustomTreeNode
 from optree import PyTree as PyTree
 from typing_extensions import dataclass_transform
 
+from stable_baselines3.common.type_aliases import TensorIndex
 from stable_baselines3.common.utils import zip_strict
 
 __all__ = [
@@ -32,7 +34,9 @@ __all__ = [
     "tree_map",
 ]
 
+S = TypeVar("S")
 T = TypeVar("T")
+U = TypeVar("U")
 
 SB3_NAMESPACE = "stable-baselines3"
 
@@ -130,9 +134,38 @@ TensorTree = Union[
     PyTree[th.Tensor],
 ]
 
+ConcreteTensorTree = TypeVar("ConcreteTensorTree", bound=TensorTree)
+
 
 tree_flatten = functools.wraps(ot.tree_flatten)(functools.partial(ot.tree_flatten, namespace=SB3_NAMESPACE))
-tree_map = functools.wraps(ot.tree_map)(functools.partial(ot.tree_map, namespace=SB3_NAMESPACE))
+
+
+@overload
+def tree_map(
+    func: Callable[..., th.Tensor],
+    tree: ConcreteTensorTree,
+    *rests: TensorTree,
+    is_leaf: Callable[[TensorTree], bool] | None = None,
+    none_is_leaf: bool = False,
+    namespace: str = SB3_NAMESPACE,
+) -> ConcreteTensorTree:
+    ...
+
+
+@overload
+def tree_map(
+    func: Callable[..., U],
+    tree: PyTree[T],
+    *rests: Any,
+    is_leaf: Callable[[T], bool] | None = None,
+    none_is_leaf: bool = False,
+    namespace: str = "",
+) -> PyTree[U]:
+    ...
+
+
+def tree_map(func, tree, *rests, is_leaf=None, none_is_leaf=False, namespace=SB3_NAMESPACE):  # type: ignore
+    return ot.tree_map(func, tree, *rests, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
 def tree_empty(tree: ot.PyTree, namespace: str = SB3_NAMESPACE) -> bool:
@@ -141,11 +174,11 @@ def tree_empty(tree: ot.PyTree, namespace: str = SB3_NAMESPACE) -> bool:
 
 
 def tree_index(
-    tree: PyTree,
-    idx: Any,
+    tree: ConcreteTensorTree,
+    idx: TensorIndex,
     *,
-    is_leaf: None | Callable[[PyTree], bool] = None,
+    is_leaf: None | Callable[[TensorTree], bool] = None,
     none_is_leaf: bool = False,
     namespace: str = SB3_NAMESPACE,
-) -> PyTree:
-    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
+) -> ConcreteTensorTree:
+    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)  # type: ignore
