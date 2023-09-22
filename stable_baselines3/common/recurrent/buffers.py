@@ -97,7 +97,10 @@ def create_sequencers(
 
     lengths_except_last = seq_start_indices[1:] - seq_start_indices[:-1]
     last_length = len(episode_starts) - seq_start_indices[-1].item()
-    max_length = int(max(lengths_except_last.max().item(), last_length))
+    if lengths_except_last.numel():
+        max_length = int(max(lengths_except_last.max().item(), last_length))
+    else:
+        max_length = int(last_length)
 
     # Create padding method for this minibatch
     # to avoid repeating arguments (seq_start_indices, seq_end_indices)
@@ -175,6 +178,8 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
         batch_shape = (self.buffer_size, self.n_envs)
         device = self.device
+
+        self.observation_space_example = space_to_example((), observation_space)
 
         self.advantages = th.zeros(batch_shape, dtype=th.float32, device=device)
         self.returns = th.zeros(batch_shape, dtype=th.float32, device=device)
@@ -310,12 +315,16 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             lambda x: self.to_device(x[batch_inds][local_seq_start_indices].swapaxes(0, 1)).contiguous(), data.lstm_states
         )
 
-        observations = tree_map(lambda x: local_pad(x[batch_inds]), data.observations)
+        observations = tree_map(
+            lambda x, example: local_pad(x[batch_inds]).view(padded_batch_size, *example.shape),
+            data.observations,
+            self.observation_space_example,
+        )
 
         return RecurrentRolloutBufferSamples(
             # (batch_size, obs_dim) -> (n_seq, max_length, obs_dim) -> (n_seq * max_length, obs_dim)
             observations=observations,
-            actions=local_pad(data.actions[batch_inds]).reshape((padded_batch_size,) + data.actions.shape[1:]),
+            actions=local_pad(data.actions[batch_inds]).view(padded_batch_size, *data.actions.shape[1:]),
             old_values=local_pad_and_flatten(data.values[batch_inds]),
             old_log_prob=local_pad_and_flatten(data.log_probs[batch_inds]),
             advantages=local_pad_and_flatten(advantages[batch_inds]),
