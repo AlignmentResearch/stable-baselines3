@@ -1,13 +1,24 @@
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Optional, Tuple, TypeVar
 
 import torch as th
 
 from stable_baselines3.common.pytree_dataclass import PyTreeDataclass, TensorTree
 
+T = TypeVar("T")
 
-class RNNStates(PyTreeDataclass[th.Tensor]):
-    pi: TensorTree
-    vf: TensorTree
+
+def unwrap(v: Optional[T]) -> T:
+    if v is None:
+        raise ValueError("Expected a value, got None")
+    return v
+
+
+LSTMStates = Tuple[th.Tensor, th.Tensor]
+
+
+class RNNStates(PyTreeDataclass[LSTMStates]):
+    pi: LSTMStates
+    vf: LSTMStates
 
 
 class RecurrentRolloutBufferData(PyTreeDataclass[th.Tensor]):
