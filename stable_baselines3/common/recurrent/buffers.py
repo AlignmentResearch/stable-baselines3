@@ -10,6 +10,7 @@ from gymnasium import spaces
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.pytree_dataclass import (
     PyTree,
+    TensorTree,
     tree_flatten,
     tree_index,
     tree_map,
@@ -115,7 +116,7 @@ def space_to_example(
     *,
     device: Optional[th.device] = None,
     ensure_non_batch_dim: bool = False,
-) -> PyTree[th.Tensor]:
+) -> TensorTree:
     if isinstance(space, spaces.Dict):
         return {
             k: space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim)
@@ -134,7 +135,7 @@ def space_to_example(
         space_shape = (len(space.nvec),)
         space_dtype = th.long
     elif isinstance(space, spaces.MultiBinary):
-        space_shape = (space.n,)
+        space_shape = space.n if isinstance(space.n, tuple) else (space.n,)
         space_dtype = th.float32
     else:
         raise TypeError(f"Unknown space type {type(space)} for {space}")
