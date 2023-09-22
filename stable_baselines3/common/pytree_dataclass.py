@@ -102,22 +102,22 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
         seq, _, _ = self.tree_flatten()
         return iter(seq)
 
-    def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:
+    def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:  # pytype: disable=invalid-annotation
         names = self._names()
         return tuple(getattr(self, n) for n in names), None, names
 
     @classmethod
-    def tree_unflatten(cls, metadata: None, children: Sequence[T]) -> CustomTreeNode[T]:
+    def tree_unflatten(cls, metadata: None, children: Sequence[T]) -> CustomTreeNode[T]:  # pytype: disable=invalid-annotation
         return cls(**dict(zip_strict(cls._names(), children)))
 
 
-@dataclass_transform(frozen_default=True)
+@dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
 class PyTreeDataclass(_PyTreeDataclassBase[T], frozen=True):
     "Abstract class for immutable dataclass PyTrees"
     ...
 
 
-@dataclass_transform(frozen_default=False)
+@dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
 class MutablePyTreeDataclass(_PyTreeDataclassBase[T], frozen=False):
     "Abstract class for mutable dataclass PyTrees"
     ...
@@ -153,7 +153,7 @@ def tree_map(
 
 
 @overload
-def tree_map(
+def tree_map(  # pytype: disable=invalid-annotation
     func: Callable[..., U],
     tree: PyTree[T],
     *rests: Any,

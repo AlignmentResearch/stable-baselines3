@@ -5,7 +5,7 @@ pytest:
 	./scripts/run_tests.sh
 
 pytype:
-	pytype -j auto
+	pytype -j auto --keep-going
 
 mypy:
 	mypy ${LINT_PATHS}
