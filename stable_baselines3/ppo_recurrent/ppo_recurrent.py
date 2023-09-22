@@ -16,6 +16,7 @@ from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.recurrent.buffers import (
     RecurrentDictRolloutBuffer,
     RecurrentRolloutBuffer,
+    RecurrentRolloutBufferData,
 )
 from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
 from stable_baselines3.common.recurrent.type_aliases import RNNStates
@@ -330,13 +331,15 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
-                self._last_obs,
-                actions,
-                rewards,
-                self._last_episode_starts,
-                values,
-                log_probs,
-                lstm_states=self._last_lstm_states,
+                RecurrentRolloutBufferData(
+                    self._last_obs,
+                    actions,
+                    rewards,
+                    self._last_episode_starts,
+                    values.squeeze(-1),
+                    log_probs,
+                    lstm_states=self._last_lstm_states,
+                )
             )
 
             self._last_obs = new_obs
