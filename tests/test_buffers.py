@@ -1,6 +1,5 @@
 import gymnasium as gym
 import numpy as np
-import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces
@@ -13,8 +12,11 @@ from stable_baselines3.common.buffers import (
 )
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.pytree_dataclass import OT_NAMESPACE as NS
-from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
+from stable_baselines3.common.pytree_dataclass import tree_flatten
+from stable_baselines3.common.recurrent.buffers import (
+    RecurrentDictRolloutBuffer,
+    RecurrentRolloutBuffer,
+)
 from stable_baselines3.common.type_aliases import (
     DictReplayBufferSamples,
     ReplayBufferSamples,
@@ -170,7 +172,7 @@ def test_device_buffer(replay_buffer_cls, device):
     # Check that all data are on the desired device
     desired_device = get_device(device).type
     for minibatch in list(data):
-        flattened_tensors, _ = ot.tree_flatten(minibatch, namespace=OT_NAMESPACE)
+        flattened_tensors, _ = tree_flatten(minibatch)
         assert len(flattened_tensors) > 3
         for value in flattened_tensors:
             assert isinstance(value, th.Tensor)
