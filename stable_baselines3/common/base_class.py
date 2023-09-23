@@ -52,7 +52,7 @@ from stable_baselines3.common.type_aliases import (
     MaybeCallback,
     Schedule,
     TensorDict,
-    TorchGymObs,
+    TorchGymObsBasic,
 )
 from stable_baselines3.common.utils import (
     check_for_correct_spaces,
@@ -172,10 +172,10 @@ class BaseAlgorithm(ABC):
         self.start_time = 0.0
         self.learning_rate = learning_rate
         self.tensorboard_log = tensorboard_log
-        self._last_obs: Optional[TorchGymObs] = None
+        self._last_obs: Optional[TorchGymObsBasic] = None
         self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
-        self._last_original_obs: Optional[TorchGymObs] = None
+        self._last_original_obs: Optional[TorchGymObsBasic] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde

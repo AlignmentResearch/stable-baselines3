@@ -1,7 +1,18 @@
 """Common aliases for type hints"""
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Protocol, SupportsFloat, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Protocol,
+    SupportsFloat,
+    Tuple,
+    Union,
+)
 
 import gymnasium as gym
 import numpy as np
@@ -11,12 +22,13 @@ from stable_baselines3.common import callbacks, vec_env
 
 GymEnv = Union[gym.Env, vec_env.VecEnv]
 GymObs = Union[Tuple["GymObs", ...], Dict[str, "GymObs"], np.ndarray, int]
-TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, int]
+TensorDict = Dict[str, th.Tensor]
+TorchGymObsBasic = Union[Tuple[th.Tensor, ...], Dict[str, th.Tensor], th.Tensor]
+TorchGymObs = Union[Tuple["TorchGymObs", ...], Dict[str, "TorchGymObs"], th.Tensor, TensorDict, int]
 GymResetReturn = Tuple[GymObs, Dict]
 AtariResetReturn = Tuple[np.ndarray, Dict[str, Any]]
 GymStepReturn = Tuple[GymObs, float, bool, bool, Dict]
 AtariStepReturn = Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]
-TensorDict = Dict[str, th.Tensor]
 TensorIndex = Union[int, slice, th.Tensor]
 OptimizerStateDict = Dict[str, Any]
 MaybeCallback = Union[None, Callable, List[callbacks.BaseCallback], callbacks.BaseCallback]
