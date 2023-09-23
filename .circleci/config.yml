@@ -62,7 +62,7 @@ jobs:
     working_directory: /workspace/third_party/stable-baselines3
     steps:
       - checkout
-      - run: pytype -j 4
+      - run: pytype -j 4 --keep-going
   py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>

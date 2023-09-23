@@ -1,13 +1,11 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
-import numpy as np
 import torch as th
 from gymnasium import spaces
 from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.pytree_dataclass import TensorTree
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
     RNNStates,
@@ -150,7 +148,9 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             )
 
         # Setup optimizer with initial learning rate
-        self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)  # type: ignore[call-arg]
+        self.optimizer = self.optimizer_class(
+            self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs  # type: ignore[call-arg]
+        )
 
     def _build_mlp_extractor(self) -> None:
         """

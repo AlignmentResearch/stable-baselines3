@@ -14,7 +14,6 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.pytree_dataclass import tree_flatten
 from stable_baselines3.common.recurrent.buffers import (
-    RecurrentDictRolloutBuffer,
     RecurrentRolloutBuffer,
 )
 from stable_baselines3.common.type_aliases import (

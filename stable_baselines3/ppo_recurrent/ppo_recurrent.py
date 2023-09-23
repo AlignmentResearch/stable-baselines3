@@ -6,7 +6,6 @@ from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
-import torch.nn.functional as F
 from gymnasium import spaces
 
 from stable_baselines3.common.buffers import RolloutBuffer

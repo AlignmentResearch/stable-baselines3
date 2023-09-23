@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional, Tuple, TypeVar
+from typing import Optional, Tuple, TypeVar
 
 import torch as th
 

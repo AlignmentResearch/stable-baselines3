@@ -3,20 +3,17 @@ from functools import partial
 from typing import Callable, Generator, Optional, Tuple, Union
 
 import numpy as np
-import optree as ot
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
+from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.pytree_dataclass import (
-    PyTree,
     TensorTree,
     tree_flatten,
     tree_index,
     tree_map,
 )
 from stable_baselines3.common.recurrent.type_aliases import (
-    RecurrentDictRolloutBufferSamples,
     RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
     RNNStates,
@@ -250,7 +247,9 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         """
         if data.rewards is None:
             raise ValueError("Recorded samples must contain a reward")
-        new_data = dataclasses.replace(data, actions=data.actions.reshape((self.n_envs, self.action_dim)))  # type: ignore[misc]
+        new_data = dataclasses.replace(
+            data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
+        )
 
         tree_map(
             lambda buf, x: buf[self.pos].copy_(x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1), non_blocking=True),
@@ -262,7 +261,9 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         if self.pos == self.buffer_size:
             self.full = True
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:  # type: ignore[override]
+    def get(  # type: ignore[override]
+        self, batch_size: Optional[int] = None
+    ) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
 
         lstm_states = tree_map(lambda x: x.swapaxes(1, 2), self.data.lstm_states)
