@@ -6,7 +6,18 @@ import time
 import warnings
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Any, ClassVar, Dict, Iterable, List, Optional, Tuple, Type, TypeVar, Union
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import gymnasium as gym
 import numpy as np
@@ -14,15 +25,35 @@ import torch as th
 from gymnasium import spaces
 
 from stable_baselines3.common import utils
-from stable_baselines3.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback
+from stable_baselines3.common.callbacks import (
+    BaseCallback,
+    CallbackList,
+    ConvertCallback,
+    ProgressBarCallback,
+)
 from stable_baselines3.common.env_util import is_wrapped
 from stable_baselines3.common.logger import Logger
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
-from stable_baselines3.common.save_util import load_from_zip_file, recursive_getattr, recursive_setattr, save_to_zip_file
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, TensorDict
+from stable_baselines3.common.preprocessing import (
+    check_for_nested_spaces,
+    is_image_space,
+    is_image_space_channels_first,
+)
+from stable_baselines3.common.save_util import (
+    load_from_zip_file,
+    recursive_getattr,
+    recursive_setattr,
+    save_to_zip_file,
+)
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    Schedule,
+    TensorDict,
+    TorchGymObs,
+)
 from stable_baselines3.common.utils import (
     check_for_correct_spaces,
     get_device,
@@ -141,10 +172,10 @@ class BaseAlgorithm(ABC):
         self.start_time = 0.0
         self.learning_rate = learning_rate
         self.tensorboard_log = tensorboard_log
-        self._last_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
+        self._last_obs: Optional[TorchGymObs] = None
         self._last_episode_starts: Optional[th.Tensor] = None
         # When using VecNormalize:
-        self._last_original_obs: Optional[Union[th.Tensor, Dict[str, th.Tensor]]] = None
+        self._last_original_obs: Optional[TorchGymObs] = None
         self._episode_num = 0
         # Used for gSDE only
         self.use_sde = use_sde

@@ -9,7 +9,7 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
     RNNStates,
-    unwrap,
+    non_null,
 )
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -257,7 +257,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             lstm_states_vf = (lstm_states_pi[0].detach(), lstm_states_pi[1].detach())
         else:
             # Critic only has a feedforward network
-            latent_vf = unwrap(self.critic)(vf_features)
+            latent_vf = non_null(self.critic)(vf_features)
             lstm_states_vf = lstm_states_pi
 
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
@@ -316,7 +316,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             latent_pi, _ = self._process_sequence(features, lstm_states, episode_starts, self.lstm_actor)
             latent_vf = latent_pi.detach()
         else:
-            latent_vf = unwrap(self.critic)(features)
+            latent_vf = non_null(self.critic)(features)
 
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
@@ -352,7 +352,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         elif self.shared_lstm:
             latent_vf = latent_pi.detach()
         else:
-            latent_vf = unwrap(self.critic)(vf_features)
+            latent_vf = non_null(self.critic)(vf_features)
 
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
@@ -360,7 +360,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf)
-        return values, log_prob, unwrap(distribution.entropy())
+        return values, log_prob, non_null(distribution.entropy())
 
     def _predict(  # type: ignore[override]
         self,

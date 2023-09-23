@@ -17,15 +17,13 @@ from typing import (
 
 import optree as ot
 import torch as th
-from optree import CustomTreeNode
-from optree import PyTree as PyTree
+from optree import CustomTreeNode, PyTree
 from typing_extensions import dataclass_transform
 
 from stable_baselines3.common.type_aliases import TensorIndex
 from stable_baselines3.common.utils import zip_strict
 
 __all__ = [
-    "PyTree",
     "PyTreeDataclass",
     "MutablePyTreeDataclass",
     "TensorTree",
@@ -129,8 +127,11 @@ class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
 TensorTree = Union[
     th.Tensor,
     Tuple["TensorTree", ...],
+    Tuple[th.Tensor, ...],
     List["TensorTree"],
+    List[th.Tensor],
     Dict[Any, "TensorTree"],
+    Dict[Any, th.Tensor],
     CustomTreeNode[th.Tensor],
     PyTree[th.Tensor],
 ]

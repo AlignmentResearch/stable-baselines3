@@ -18,7 +18,7 @@ from stable_baselines3.common.recurrent.buffers import (
     RecurrentRolloutBufferData,
 )
 from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
-from stable_baselines3.common.recurrent.type_aliases import RNNStates
+from stable_baselines3.common.recurrent.type_aliases import RNNStates, non_null
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
@@ -89,6 +89,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "CnnPolicy": CnnLstmPolicy,
         "MultiInputPolicy": MultiInputLstmPolicy,
     }
+
+    policy: RecurrentActorCriticPolicy
+    policy_class: Type[RecurrentActorCriticPolicy]
 
     def __init__(
         self,
@@ -174,7 +177,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.clip_range_vf = clip_range_vf
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
-        self._last_lstm_states = None
+        self._last_lstm_states: Optional[RNNStates] = None
 
         if _init_setup_model:
             self._setup_model()
@@ -197,6 +200,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # We assume that LSTM for the actor and the critic
         # have the same architecture
         lstm = self.policy.lstm_actor
+        assert isinstance(lstm, th.nn.Module)
 
         if not isinstance(self.policy, RecurrentActorCriticPolicy):
             raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
@@ -282,7 +286,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 episode_starts = self._last_episode_starts
-                actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
+                actions, values, log_probs, lstm_states = self.policy.forward(
+                    obs_tensor, non_null(lstm_states), non_null(episode_starts)
+                )
 
             # Rescale and perform action
             clipped_actions = actions
@@ -334,10 +340,10 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     self._last_obs,
                     actions,
                     rewards,
-                    self._last_episode_starts,
+                    non_null(self._last_episode_starts),
                     values.squeeze(-1),
                     log_probs,
-                    lstm_states=self._last_lstm_states,
+                    lstm_states=non_null(self._last_lstm_states),
                 )
             )
 

@@ -53,6 +53,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
     rollout_buffer: RolloutBuffer
     policy: ActorCriticPolicy
+    policy_class: Type[ActorCriticPolicy]
 
     def __init__(
         self,
