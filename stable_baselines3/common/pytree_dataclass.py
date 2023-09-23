@@ -5,6 +5,7 @@ from typing import (
     Callable,
     ClassVar,
     Dict,
+    Generic,
     List,
     Optional,
     Sequence,
@@ -112,13 +113,13 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
 
 
 @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-class PyTreeDataclass(_PyTreeDataclassBase[T], frozen=True):
+class PyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
     "Abstract class for immutable dataclass PyTrees"
     ...
 
 
 @dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
-class MutablePyTreeDataclass(_PyTreeDataclassBase[T], frozen=False):
+class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
     "Abstract class for mutable dataclass PyTrees"
     ...
 
