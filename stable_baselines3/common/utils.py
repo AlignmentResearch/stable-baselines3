@@ -25,7 +25,6 @@ from stable_baselines3.common.logger import Logger, configure
 from stable_baselines3.common.type_aliases import (
     GymEnv,
     Schedule,
-    TensorDict,
     TrainFreq,
     TrainFrequencyUnit,
 )

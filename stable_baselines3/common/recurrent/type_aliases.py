@@ -28,7 +28,7 @@ class RecurrentRolloutBufferData(PyTreeDataclass[th.Tensor]):
     episode_starts: th.Tensor
     values: th.Tensor
     log_probs: th.Tensor
-    lstm_states: TensorTree
+    hidden_states: TensorTree
 
 
 class RecurrentRolloutBufferSamples(PyTreeDataclass[th.Tensor]):
@@ -36,7 +36,7 @@ class RecurrentRolloutBufferSamples(PyTreeDataclass[th.Tensor]):
     actions: th.Tensor
     old_values: th.Tensor
     old_log_prob: th.Tensor
-    lstm_states: TensorTree
+    hidden_states: TensorTree
     episode_starts: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor

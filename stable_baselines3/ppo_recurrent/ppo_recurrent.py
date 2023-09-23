@@ -1,17 +1,16 @@
 import sys
 import time
 import warnings
-from copy import deepcopy
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.pytree_dataclass import tree_map
 from stable_baselines3.common.recurrent.buffers import (
     RecurrentRolloutBuffer,
     RecurrentRolloutBufferData,
@@ -203,30 +202,23 @@ class RecurrentPPO(OnPolicyAlgorithm):
         if not isinstance(self.policy, RecurrentActorCriticPolicy):
             raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        single_hidden_state_shape = (lstm.num_layers, self.n_envs, lstm.hidden_size)
-        # hidden and cell states for actor and critic
-        self._last_lstm_states = RNNStates(
-            (
-                th.zeros(single_hidden_state_shape, device=self.device),
-                th.zeros(single_hidden_state_shape, device=self.device),
-            ),
-            (
-                th.zeros(single_hidden_state_shape, device=self.device),
-                th.zeros(single_hidden_state_shape, device=self.device),
-            ),
+        hidden_state_example = RNNStates(
+            (th.zeros((lstm.num_layers, lstm.hidden_size)), th.zeros((lstm.num_layers, lstm.hidden_size))),
+            (th.zeros((lstm.num_layers, lstm.hidden_size)), th.zeros((lstm.num_layers, lstm.hidden_size))),
         )
-
-        hidden_state_buffer_shape = (self.n_steps, lstm.num_layers, self.n_envs, lstm.hidden_size)
 
         self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,
             self.observation_space,
             self.action_space,
-            hidden_state_buffer_shape,
-            self.device,
+            hidden_state_example=hidden_state_example,
+            device=self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
+        )
+        self._last_lstm_states = tree_map(  # type: ignore
+            lambda x: x[0].clone().contiguous(), self.rollout_buffer.data.hidden_states
         )
 
         # Initialize schedules for policy/value clipping
@@ -271,7 +263,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         callback.on_rollout_start()
 
-        lstm_states = non_null(deepcopy(self._last_lstm_states))
+        lstm_states = non_null(self._last_lstm_states)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -283,7 +275,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 episode_starts = self._last_episode_starts
                 actions, values, log_probs, lstm_states = self.policy.forward(
-                    obs_tensor, non_null(lstm_states), non_null(episode_starts)
+                    obs_tensor, lstm_states, non_null(episode_starts)
                 )
 
             # Rescale and perform action
@@ -320,11 +312,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 ):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
-                        terminal_lstm_state = (
-                            lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
-                            lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
+                        terminal_lstm_state = tree_map(
+                            lambda x: x[:, idx : idx + 1, :].contiguous(), lstm_states.vf  # noqa: B023
                         )
-                        # terminal_lstm_state = None
                         episode_starts = th.tensor([False], dtype=th.bool, device=self.device)
                         terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
                             0
@@ -339,7 +329,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     non_null(self._last_episode_starts),
                     values.squeeze(-1),
                     log_probs,
-                    lstm_states=non_null(self._last_lstm_states),
+                    hidden_states=non_null(self._last_lstm_states),
                 )
             )
 
@@ -395,7 +385,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 values, log_prob, entropy = self.policy.evaluate_actions(
                     rollout_data.observations,  # type: ignore[arg-type]
                     actions,
-                    rollout_data.lstm_states,  # type: ignore[arg-type]
+                    rollout_data.hidden_states,  # type: ignore[arg-type]
                     rollout_data.episode_starts,
                 )
 
