@@ -1,11 +1,19 @@
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+import dataclasses
+from abc import abstractmethod
+from typing import Any, Dict, Generic, List, Optional, Protocol, Tuple, Type, Union
 
 import torch as th
 from gymnasium import spaces
 from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
-from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
+from stable_baselines3.common.pytree_dataclass import (
+    ConcreteTensorTree,
+    PyTreeDataclass,
+    TensorTree,
+)
+from stable_baselines3.common.recurrent.buffers import tree_flatten
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
     RNNStates,
@@ -220,10 +228,59 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         lstm_output = th.flatten(th.cat(lstm_output).transpose(0, 1), start_dim=0, end_dim=1)
         return lstm_output, lstm_states
 
+    def recurrent_initial_state(self, n_envs: int = 1, *, device: Optional[th.device | str] = None):
+        shape = (self.lstm_hidden_state_shape[0], n_envs, self.lstm_hidden_state_shape[2])
+        return RNNStates(
+            (th.zeros(shape, device=device), th.zeros(shape, device=device)),
+            (th.zeros(shape, device=device), th.zeros(shape, device=device)),
+        )
+
+    # Methods for getting `latent_vf` or `latent_pi`
+    def _recurrent_latent_pi_and_vf(
+        self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor
+    ) -> Tuple[Tuple[th.Tensor, th.Tensor], RNNStates]:
+        features = self.extract_features(obs)
+        pi_features: th.Tensor
+        vf_features: th.Tensor
+        if self.share_features_extractor:
+            assert isinstance(features, th.Tensor)
+            pi_features = vf_features = features
+        else:
+            assert isinstance(features, tuple)
+            pi_features, vf_features = features
+        latent_pi, lstm_states_pi = self._process_sequence(pi_features, state.pi, episode_starts, self.lstm_actor)
+        if self.lstm_critic is not None:
+            latent_vf, lstm_states_vf = self._process_sequence(vf_features, state.vf, episode_starts, self.lstm_critic)
+        elif self.shared_lstm:
+            # Re-use LSTM features but do not backpropagate
+            latent_vf = latent_pi.detach()
+            lstm_states_vf = (lstm_states_pi[0].detach(), lstm_states_pi[1].detach())
+        else:
+            raise ValueError(
+                f"Either lstm_critic is not None or shared_lstm is True, but {self.lstm_critic=} and {self.shared_lstm=}."
+            )
+        return ((latent_pi, latent_vf), RNNStates(lstm_states_pi, lstm_states_vf))
+
+    def _recurrent_latent_pi(self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor) -> th.Tensor:
+        "Get only the pi features, not advancing the hidden state"
+        pi_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.pi_features_extractor)
+        latent_pi, _ = self._process_sequence(pi_features, state.pi, episode_starts, self.lstm_actor)
+        return latent_pi
+
+    def _recurrent_latent_vf(self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor) -> th.Tensor:
+        "Get only the vf features, not advancing the hidden state"
+        vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
+        if self.shared_lstm:
+            with th.no_grad():
+                latent_vf, _ = self._process_sequence(vf_features, state.pi, episode_starts, self.lstm_actor)
+        else:
+            latent_vf, _ = self._process_sequence(vf_features, state.vf, episode_starts, non_null(self.lstm_critic))
+        return latent_vf
+
     def forward(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        lstm_states: RNNStates,
+        state: RNNStates,
         episode_starts: th.Tensor,
         deterministic: bool = False,
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RNNStates]:
@@ -231,35 +288,13 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         Forward pass in all the networks (actor and critic)
 
         :param obs: Observation. Observation
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :param deterministic: Whether to sample or use deterministic actions
         :return: action, value and log probability of the action
         """
-        # Preprocess the observation if needed
-        features = self.extract_features(obs)
-        pi_features: th.Tensor
-        vf_features: th.Tensor
-        if self.share_features_extractor:
-            assert isinstance(features, th.Tensor)
-            pi_features = vf_features = features  # alis
-        else:
-            assert isinstance(features, tuple)
-            pi_features, vf_features = features
-        # latent_pi, latent_vf = self.mlp_extractor(features)
-        latent_pi, lstm_states_pi = self._process_sequence(pi_features, lstm_states.pi, episode_starts, self.lstm_actor)
-        if self.lstm_critic is not None:
-            latent_vf, lstm_states_vf = self._process_sequence(vf_features, lstm_states.vf, episode_starts, self.lstm_critic)
-        elif self.shared_lstm:
-            # Re-use LSTM features but do not backpropagate
-            latent_vf = latent_pi.detach()
-            lstm_states_vf = (lstm_states_pi[0].detach(), lstm_states_pi[1].detach())
-        else:
-            # Critic only has a feedforward network
-            latent_vf = non_null(self.critic)(vf_features)
-            lstm_states_vf = lstm_states_pi
-
+        (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
@@ -268,61 +303,49 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         distribution = self._get_action_dist_from_latent(latent_pi)
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
-        return actions, values, log_prob, RNNStates(lstm_states_pi, lstm_states_vf)
+        return actions, values, log_prob, state
 
     def get_distribution(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        lstm_states: LSTMStates,
+        state: RNNStates,
         episode_starts: th.Tensor,
-    ) -> Tuple[Distribution, LSTMStates]:
+    ) -> Tuple[Distribution, RNNStates]:
         """
         Get the current policy distribution given the observations.
 
         :param obs: Observation.
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :return: the action distribution and new hidden states.
         """
         # Call the method from the parent of the parent class
-        features = super(ActorCriticPolicy, self).extract_features(obs, self.pi_features_extractor)
-        latent_pi, lstm_states = self._process_sequence(features, lstm_states, episode_starts, self.lstm_actor)
+        latent_pi, state = self._recurrent_latent_pi(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
-        return self._get_action_dist_from_latent(latent_pi), lstm_states
+        return self._get_action_dist_from_latent(latent_pi), state
 
     def predict_values(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        lstm_states: LSTMStates,
+        state: RNNStates,
         episode_starts: th.Tensor,
     ) -> th.Tensor:
         """
         Get the estimated values according to the current policy given the observations.
 
         :param obs: Observation.
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :return: the estimated values.
         """
-        # Call the method from the parent of the parent class
-        features = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
-
-        if self.lstm_critic is not None:
-            latent_vf, lstm_states_vf = self._process_sequence(features, lstm_states, episode_starts, self.lstm_critic)
-        elif self.shared_lstm:
-            # Use LSTM from the actor
-            latent_pi, _ = self._process_sequence(features, lstm_states, episode_starts, self.lstm_actor)
-            latent_vf = latent_pi.detach()
-        else:
-            latent_vf = non_null(self.critic)(features)
-
+        latent_vf, _ = self._recurrent_latent_vf(obs, state, episode_starts)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
 
     def evaluate_actions(  # type: ignore[override]
-        self, obs: TorchGymObs, actions: th.Tensor, lstm_states: RNNStates, episode_starts: th.Tensor
+        self, obs: TorchGymObs, actions: th.Tensor, state: RNNStates, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
         Evaluate actions according to the current policy,
@@ -330,30 +353,14 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
         :param obs: Observation.
         :param actions:
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :return: estimated value, log likelihood of taking those actions
             and entropy of the action distribution.
         """
         # Preprocess the observation if needed
-        features = self.extract_features(obs)
-        pi_features: th.Tensor
-        vf_features: th.Tensor
-        if self.share_features_extractor:
-            assert isinstance(features, th.Tensor)
-            pi_features = vf_features = features  # alias
-        else:
-            assert isinstance(features, tuple)
-            pi_features, vf_features = features
-        latent_pi, _ = self._process_sequence(pi_features, lstm_states.pi, episode_starts, self.lstm_actor)
-        if self.lstm_critic is not None:
-            latent_vf, _ = self._process_sequence(vf_features, lstm_states.vf, episode_starts, self.lstm_critic)
-        elif self.shared_lstm:
-            latent_vf = latent_pi.detach()
-        else:
-            latent_vf = non_null(self.critic)(vf_features)
-
+        (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
 
@@ -365,22 +372,22 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
     def _predict(  # type: ignore[override]
         self,
         observation: TorchGymObs,
-        lstm_states: LSTMStates,
+        state: RNNStates,
         episode_starts: th.Tensor,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, LSTMStates]:
+    ) -> Tuple[th.Tensor, RNNStates]:
         """
         Get the action according to the policy for a given observation.
 
         :param observation:
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :param deterministic: Whether to use stochastic or deterministic actions
         :return: Taken action according to the policy and hidden states of the RNN
         """
-        distribution, lstm_states = self.get_distribution(observation, lstm_states, episode_starts)
-        return distribution.get_actions(deterministic=deterministic), lstm_states
+        distribution, state = self.get_distribution(observation, state, episode_starts)
+        return distribution.get_actions(deterministic=deterministic), state
 
     def predict(  # type: ignore[override]
         self,
@@ -394,7 +401,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         Includes sugar-coating to handle different observations (e.g. normalizing images).
 
         :param observation: the input observation
-        :param lstm_states: The last hidden and memory states for the LSTM.
+        :param state: The last hidden and memory states for the LSTM.
         :param episode_starts: Whether the observations correspond to new episodes
             or not (we reset the lstm states in that case).
         :param deterministic: Whether or not to return deterministic actions.
@@ -405,25 +412,18 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         self.set_training_mode(False)
 
         observation, vectorized_env = self.obs_to_tensor(observation)
+        (one_obs_tensor, *_), _ = tree_flatten(observation)
+        n_envs = len(one_obs_tensor)
 
-        if isinstance(observation, dict):
-            n_envs = observation[next(iter(observation.keys()))].shape[0]
-        else:
-            n_envs = observation.shape[0]
-        # state : (n_layers, n_envs, dim)
         if state is None:
-            # Initialize hidden states to zeros
-            state_component = th.cat([th.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)  # type: ignore
-            state = (state_component, state_component)
+            state = self.recurrent_initial_state(n_envs)
 
         if episode_start is None:
             episode_start = th.zeros(n_envs, dtype=th.bool)
 
         with th.no_grad():
             # Convert to PyTorch tensors
-            actions, state = self._predict(
-                observation, lstm_states=state, episode_starts=episode_start, deterministic=deterministic
-            )
+            actions, state = self._predict(observation, state=state, episode_starts=episode_start, deterministic=deterministic)
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:

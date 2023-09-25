@@ -134,6 +134,8 @@ TensorTree = Union[
     Dict[Any, th.Tensor],
     CustomTreeNode[th.Tensor],
     PyTree[th.Tensor],
+    PyTreeDataclass[th.Tensor],
+    MutablePyTreeDataclass[th.Tensor],
 ]
 
 ConcreteTensorTree = TypeVar("ConcreteTensorTree", bound=TensorTree)

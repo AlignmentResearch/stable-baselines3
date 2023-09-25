@@ -313,7 +313,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
                         terminal_lstm_state = tree_map(
-                            lambda x: x[:, idx : idx + 1, :].contiguous(), lstm_states.vf  # noqa: B023
+                            lambda x: x[:, idx : idx + 1, :].contiguous(),  # noqa: B023  ( idx not captured by function )
+                            lstm_states,
                         )
                         episode_starts = th.tensor([False], dtype=th.bool, device=self.device)
                         terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
@@ -340,7 +341,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         with th.no_grad():
             # Compute value for the last timestep
             episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states.vf, episode_starts)
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
