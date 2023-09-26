@@ -249,33 +249,29 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             assert isinstance(features, tuple)
             pi_features, vf_features = features
         latent_pi, lstm_states_pi = self._process_sequence(pi_features, state.pi, episode_starts, self.lstm_actor)
-        if self.lstm_critic is not None:
-            latent_vf, lstm_states_vf = self._process_sequence(vf_features, state.vf, episode_starts, self.lstm_critic)
-        elif self.shared_lstm:
-            # Re-use LSTM features but do not backpropagate
-            latent_vf = latent_pi.detach()
+        latent_vf, lstm_states_vf = self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)
+        if lstm_states_vf is None:
             lstm_states_vf = (lstm_states_pi[0].detach(), lstm_states_pi[1].detach())
-        else:
-            raise ValueError(
-                f"Either lstm_critic is not None or shared_lstm is True, but {self.lstm_critic=} and {self.shared_lstm=}."
-            )
         return ((latent_pi, latent_vf), RNNStates(lstm_states_pi, lstm_states_vf))
 
-    def _recurrent_latent_pi(self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor) -> th.Tensor:
-        "Get only the pi features, not advancing the hidden state"
-        pi_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.pi_features_extractor)
-        latent_pi, _ = self._process_sequence(pi_features, state.pi, episode_starts, self.lstm_actor)
-        return latent_pi
-
-    def _recurrent_latent_vf(self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor) -> th.Tensor:
+    def _recurrent_latent_vf_from_features(
+        self, vf_features: th.Tensor, state: RNNStates, episode_starts: th.Tensor
+    ) -> Tuple[th.Tensor, Optional[LSTMStates]]:
         "Get only the vf features, not advancing the hidden state"
-        vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
-        if self.shared_lstm:
-            with th.no_grad():
-                latent_vf, _ = self._process_sequence(vf_features, state.pi, episode_starts, self.lstm_actor)
+        if self.lstm_critic is None:
+            if self.shared_lstm:
+                with th.no_grad():
+                    latent_vf, _ = self._process_sequence(vf_features, state.pi, episode_starts, self.lstm_actor)
+            else:
+                latent_vf = non_null(self.critic)(vf_features)
+            state_vf = None
         else:
-            latent_vf, _ = self._process_sequence(vf_features, state.vf, episode_starts, non_null(self.lstm_critic))
-        return latent_vf
+            latent_vf, state_vf = self._process_sequence(vf_features, state.vf, episode_starts, self.lstm_critic)
+        return latent_vf, state_vf
+
+    def _recurrent_latent_vf_nostate(self, obs: TorchGymObs, state: RNNStates, episode_starts: th.Tensor) -> th.Tensor:
+        vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
+        return self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)[0]
 
     def forward(  # type: ignore[override]
         self,
@@ -321,7 +317,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         :return: the action distribution and new hidden states.
         """
         # Call the method from the parent of the parent class
-        latent_pi, state = self._recurrent_latent_pi(obs, state, episode_starts)
+        (latent_pi, _), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         return self._get_action_dist_from_latent(latent_pi), state
 
@@ -340,7 +336,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             or not (we reset the lstm states in that case).
         :return: the estimated values.
         """
-        latent_vf, _ = self._recurrent_latent_vf(obs, state, episode_starts)
+        latent_vf = self._recurrent_latent_vf_nostate(obs, state, episode_starts)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
 
