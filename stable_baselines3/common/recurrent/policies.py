@@ -1,18 +1,11 @@
-import dataclasses
-from abc import abstractmethod
-from typing import Any, Dict, Generic, List, Optional, Protocol, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch as th
 from gymnasium import spaces
 from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
-from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
-from stable_baselines3.common.pytree_dataclass import (
-    ConcreteTensorTree,
-    PyTreeDataclass,
-    TensorTree,
-)
+from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.recurrent.buffers import tree_flatten
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
@@ -388,10 +381,10 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
     def predict(  # type: ignore[override]
         self,
         observation: TorchGymObs,
-        state: Optional[LSTMStates] = None,
+        state: Optional[RNNStates] = None,
         episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, Optional[LSTMStates]]:
+    ) -> Tuple[th.Tensor, Optional[RNNStates]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -408,7 +401,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         self.set_training_mode(False)
 
         observation, vectorized_env = self.obs_to_tensor(observation)
-        (one_obs_tensor, *_), _ = tree_flatten(observation)
+        one_obs_tensor: th.Tensor
+        (one_obs_tensor, *_), _ = tree_flatten(observation)  # type: ignore
         n_envs = len(one_obs_tensor)
 
         if state is None:

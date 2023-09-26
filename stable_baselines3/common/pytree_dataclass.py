@@ -1,5 +1,4 @@
 import dataclasses
-import functools
 from typing import (
     Any,
     Callable,
@@ -141,7 +140,30 @@ TensorTree = Union[
 ConcreteTensorTree = TypeVar("ConcreteTensorTree", bound=TensorTree)
 
 
-tree_flatten = functools.wraps(ot.tree_flatten)(functools.partial(ot.tree_flatten, namespace=SB3_NAMESPACE))
+@overload
+def tree_flatten(
+    tree: TensorTree,
+    is_leaf: Callable[[TensorTree], bool] | None,
+    *,
+    none_is_leaf: bool = False,
+    namespace: str = SB3_NAMESPACE,
+) -> tuple[list[th.Tensor], ot.PyTreeSpec]:
+    ...
+
+
+@overload
+def tree_flatten(
+    tree: PyTree[T],
+    is_leaf: Callable[[T], bool] | None,
+    *,
+    none_is_leaf: bool = False,
+    namespace: str = SB3_NAMESPACE,
+) -> tuple[list[T], ot.PyTreeSpec]:
+    ...
+
+
+def tree_flatten(tree, is_leaf=None, *, none_is_leaf=False, namespace=SB3_NAMESPACE):
+    return ot.tree_flatten(tree, is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
 @overload
