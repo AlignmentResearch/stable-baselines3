@@ -194,18 +194,10 @@ class RecurrentPPO(OnPolicyAlgorithm):
         )
         self.policy = self.policy.to(self.device)
 
-        # We assume that LSTM for the actor and the critic
-        # have the same architecture
-        lstm = self.policy.lstm_actor
-        assert isinstance(lstm, th.nn.Module)
+        # if not isinstance(self.policy, RecurrentActorCriticPolicy):
+        #     raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        if not isinstance(self.policy, RecurrentActorCriticPolicy):
-            raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
-
-        hidden_state_example = RNNStates(
-            (th.zeros((lstm.num_layers, lstm.hidden_size)), th.zeros((lstm.num_layers, lstm.hidden_size))),
-            (th.zeros((lstm.num_layers, lstm.hidden_size)), th.zeros((lstm.num_layers, lstm.hidden_size))),
-        )
+        hidden_state_example = self.policy.recurrent_initial_state(n_envs=None, device=self.device)
 
         self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,

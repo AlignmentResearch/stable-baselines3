@@ -6,7 +6,7 @@ from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.recurrent.buffers import tree_flatten
+from stable_baselines3.common.pytree_dataclass import tree_flatten
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
     RNNStates,
@@ -221,8 +221,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         lstm_output = th.flatten(th.cat(lstm_output).transpose(0, 1), start_dim=0, end_dim=1)
         return lstm_output, lstm_states
 
-    def recurrent_initial_state(self, n_envs: int = 1, *, device: Optional[th.device | str] = None):
-        shape = (self.lstm_hidden_state_shape[0], n_envs, self.lstm_hidden_state_shape[2])
+    def recurrent_initial_state(self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None):
+        if n_envs is None:
+            shape = (self.lstm_hidden_state_shape[0], self.lstm_hidden_state_shape[2])
+        else:
+            shape = (self.lstm_hidden_state_shape[0], n_envs, self.lstm_hidden_state_shape[2])
         return RNNStates(
             (th.zeros(shape, device=device), th.zeros(shape, device=device)),
             (th.zeros(shape, device=device), th.zeros(shape, device=device)),
