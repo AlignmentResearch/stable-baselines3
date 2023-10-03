@@ -222,6 +222,7 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         return lstm_output, lstm_states
 
     def recurrent_initial_state(self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None):
+        shape: tuple[int, ...]
         if n_envs is None:
             shape = (self.lstm_hidden_state_shape[0], self.lstm_hidden_state_shape[2])
         else:
