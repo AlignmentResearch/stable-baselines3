@@ -277,7 +277,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         indices = th.arange(self.buffer_size * self.n_envs)
         indices = th.cat((indices[split_index:], indices[:split_index]))
 
-        env_change = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool)
+        env_change = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool, device=self.device)
         # Flag first timestep as change of environment
         env_change[0, :] = True
         env_change = self.swap_and_flatten(env_change)
