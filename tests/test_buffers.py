@@ -26,6 +26,8 @@ from stable_baselines3.common.type_aliases import (
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 
+EP_LENGTH: int = 100
+
 
 class DummyEnv(gym.Env):
     """
@@ -38,7 +40,7 @@ class DummyEnv(gym.Env):
         self._observations = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]], dtype=np.float32)
         self._rewards = [1, 2, 3, 4, 5]
         self._t = 0
-        self._ep_length = 100
+        self._ep_length = EP_LENGTH
 
     def reset(self, *, seed=None, options=None):
         self._t = 0
@@ -68,7 +70,7 @@ class DummyDictEnv(gym.Env):
         self._observations = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]], dtype=np.float32)
         self._rewards = [1, 2, 3, 4, 5]
         self._t = 0
-        self._ep_length = 100
+        self._ep_length = EP_LENGTH
 
     def reset(self, seed=None, options=None):
         self._t = 0
@@ -98,12 +100,12 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     env = make_vec_env(env)
     env = VecNormalize(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device="cpu")
+    buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device="cpu")
 
     # Interract and store transitions
     env.reset()
     obs = env.get_original_obs()
-    for _ in range(100):
+    for _ in range(EP_LENGTH):
         action = th.as_tensor(env.action_space.sample())
         _, _, done, info = env.step(action)
         next_obs = env.get_original_obs()
@@ -143,14 +145,18 @@ def test_device_buffer(replay_buffer_cls, device):
 
     if replay_buffer_cls == RecurrentRolloutBuffer:
         buffer = RecurrentRolloutBuffer(
-            100, env.observation_space, env.action_space, hidden_state_shape=(100, 1, env.num_envs, 4), device=device
+            EP_LENGTH,
+            env.observation_space,
+            env.action_space,
+            hidden_state_shape=(EP_LENGTH, 1, env.num_envs, 4),
+            device=device,
         )
     else:
-        buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
+        buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device)
 
     # Interract and store transitions
     obs = env.reset()
-    for _ in range(100):
+    for _ in range(EP_LENGTH):
         action = th.as_tensor(env.action_space.sample())
 
         next_obs, reward, done, info = env.step(action)
