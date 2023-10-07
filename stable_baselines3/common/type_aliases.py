@@ -1,5 +1,6 @@
 """Common aliases for type hints"""
 
+from abc import abstractproperty
 from enum import Enum
 from typing import (
     Any,
@@ -109,3 +110,10 @@ class PolicyPredictor(Protocol):
         :return: the model's action and the next hidden state
             (used in recurrent policies)
         """
+
+    @abstractproperty
+    def device(self) -> th.device:
+        """
+        :return: the device on which this predictor lives
+        """
+        ...

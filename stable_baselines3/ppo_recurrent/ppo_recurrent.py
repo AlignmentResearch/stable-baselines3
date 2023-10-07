@@ -246,7 +246,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
-        self._last_episode_starts = self._last_episode_starts.to(self.device)
+        self._last_episode_starts = non_null(self._last_episode_starts).to(self.device)
 
         n_steps = 0
         rollout_buffer.reset()
