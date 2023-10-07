@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -6,17 +6,11 @@ import pytest
 import torch as th
 import torch.nn as nn
 
-from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
+from stable_baselines3 import A2C, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-MODEL_LIST = [
-    PPO,
-    A2C,
-    TD3,
-    SAC,
-    DQN,
-]
+MODEL_LIST = [PPO, A2C, TD3, SAC, DQN, RecurrentPPO]
 
 
 class FlattenBatchNormDropoutExtractor(BaseFeaturesExtractor):
@@ -43,7 +37,7 @@ class FlattenBatchNormDropoutExtractor(BaseFeaturesExtractor):
         return result
 
 
-def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> (th.Tensor, th.Tensor):
+def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> Tuple[th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the given batch norm layer.
 
@@ -53,7 +47,7 @@ def clone_batch_norm_stats(batch_norm: nn.BatchNorm1d) -> (th.Tensor, th.Tensor)
     return batch_norm.bias.clone(), batch_norm.running_mean.clone()
 
 
-def clone_dqn_batch_norm_stats(model: DQN) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+def clone_dqn_batch_norm_stats(model: DQN) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the Q-network and target network.
 
@@ -71,7 +65,7 @@ def clone_dqn_batch_norm_stats(model: DQN) -> (th.Tensor, th.Tensor, th.Tensor, 
 
 def clone_td3_batch_norm_stats(
     model: TD3,
-) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the actor and critic networks and actor-target and critic-target networks.
 
@@ -104,7 +98,7 @@ def clone_td3_batch_norm_stats(
 
 def clone_sac_batch_norm_stats(
     model: SAC,
-) -> (th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor):
+) -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
     """
     Clone the bias and running mean from the actor and critic networks and critic-target networks.
 
@@ -123,7 +117,7 @@ def clone_sac_batch_norm_stats(
     return (actor_bias, actor_running_mean, critic_bias, critic_running_mean, critic_target_bias, critic_target_running_mean)
 
 
-def clone_on_policy_batch_norm(model: Union[A2C, PPO]) -> (th.Tensor, th.Tensor):
+def clone_on_policy_batch_norm(model: Union[A2C, PPO]) -> Tuple[th.Tensor, th.Tensor]:
     return clone_batch_norm_stats(model.policy.features_extractor.batch_norm)
 
 
@@ -133,6 +127,7 @@ CLONE_HELPERS = {
     SAC: clone_sac_batch_norm_stats,
     TD3: clone_td3_batch_norm_stats,
     PPO: clone_on_policy_batch_norm,
+    RecurrentPPO: clone_on_policy_batch_norm,
 }
 
 
@@ -268,7 +263,7 @@ def test_sac_train_with_batch_norm():
     assert th.isclose(critic_running_mean_after, critic_target_running_mean_after).all()
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO])
+@pytest.mark.parametrize("model_class", [A2C, PPO, RecurrentPPO])
 @pytest.mark.parametrize("env_id", ["Pendulum-v1", "CartPole-v1"])
 def test_a2c_ppo_train_with_batch_norm(model_class, env_id):
     model = model_class(
@@ -319,7 +314,7 @@ def test_offpolicy_collect_rollout_batch_norm(model_class):
         assert th.isclose(param_before, param_after).all()
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO])
+@pytest.mark.parametrize("model_class", [A2C, PPO, RecurrentPPO])
 @pytest.mark.parametrize("env_id", ["Pendulum-v1", "CartPole-v1"])
 def test_a2c_ppo_collect_rollouts_with_batch_norm(model_class, env_id):
     model = model_class(

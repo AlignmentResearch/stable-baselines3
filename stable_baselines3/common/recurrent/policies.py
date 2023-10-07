@@ -3,8 +3,11 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
+from torch import nn
+
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
@@ -14,9 +17,6 @@ from stable_baselines3.common.torch_layers import (
 )
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.utils import zip_strict
-from torch import nn
-
-from sb3_contrib.common.recurrent.type_aliases import RNNStates
 
 
 class RecurrentActorCriticPolicy(ActorCriticPolicy):
@@ -200,8 +200,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
                 features.unsqueeze(dim=0),
                 (
                     # Reset the states at the beginning of a new episode
-                    (1.0 - episode_start).view(1, n_seq, 1) * lstm_states[0],
-                    (1.0 - episode_start).view(1, n_seq, 1) * lstm_states[1],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[0],
+                    (~episode_start).view(1, n_seq, 1) * lstm_states[1],
                 ),
             )
             lstm_output += [hidden]
@@ -366,11 +366,11 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
 
     def predict(
         self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
+        observation: Union[th.Tensor, Dict[str, th.Tensor]],
+        state: Optional[Tuple[th.Tensor, ...]] = None,
+        episode_start: Optional[th.Tensor] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[th.Tensor, Optional[Tuple[th.Tensor, ...]]]:
         """
         Get the policy action from an observation (and optional hidden state).
         Includes sugar-coating to handle different observations (e.g. normalizing images).
@@ -395,25 +395,17 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         # state : (n_layers, n_envs, dim)
         if state is None:
             # Initialize hidden states to zeros
-            state = np.concatenate([np.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
+            state = th.cat([th.zeros(self.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
             state = (state, state)
 
         if episode_start is None:
-            episode_start = np.array([False for _ in range(n_envs)])
+            episode_start = th.zeros(n_envs, dtype=th.bool)
 
         with th.no_grad():
             # Convert to PyTorch tensors
-            states = th.tensor(state[0], dtype=th.float32, device=self.device), th.tensor(
-                state[1], dtype=th.float32, device=self.device
+            actions, state = self._predict(
+                observation, lstm_states=state, episode_starts=episode_start, deterministic=deterministic
             )
-            episode_starts = th.tensor(episode_start, dtype=th.float32, device=self.device)
-            actions, states = self._predict(
-                observation, lstm_states=states, episode_starts=episode_starts, deterministic=deterministic
-            )
-            states = (states[0].cpu().numpy(), states[1].cpu().numpy())
-
-        # Convert to numpy
-        actions = actions.cpu().numpy()
 
         if isinstance(self.action_space, spaces.Box):
             if self.squash_output:
@@ -422,13 +414,15 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
             else:
                 # Actions could be on arbitrary scale, so clip the actions to avoid
                 # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                actions = th.clip(
+                    actions, th.as_tensor(self.action_space.low).to(actions), th.as_tensor(self.action_space.high).to(actions)
+                )
 
         # Remove batch dimension if needed
         if not vectorized_env:
             actions = actions.squeeze(axis=0)
 
-        return actions, states
+        return actions, state
 
 
 class RecurrentActorCriticCnnPolicy(RecurrentActorCriticPolicy):

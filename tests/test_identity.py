@@ -1,21 +1,27 @@
 import numpy as np
 import pytest
 
-from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3
-from stable_baselines3.common.envs import IdentityEnv, IdentityEnvBox, IdentityEnvMultiBinary, IdentityEnvMultiDiscrete
+from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
+from stable_baselines3.common.envs import (
+    IdentityEnv,
+    IdentityEnvBox,
+    IdentityEnvMultiBinary,
+    IdentityEnvMultiDiscrete,
+)
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.noise import NormalActionNoise
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 DIM = 4
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO, DQN])
+@pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
     kwargs = {}
-    n_steps = 10000
+    n_steps = 25000 if model_class == RecurrentPPO else 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
@@ -30,11 +36,11 @@ def test_discrete(model_class, env):
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO, SAC, DDPG, TD3])
+@pytest.mark.parametrize("model_class", [A2C, PPO, SAC, DDPG, TD3, RecurrentPPO])
 def test_continuous(model_class):
     env = IdentityEnvBox(eps=0.5)
 
-    n_steps = {A2C: 2000, PPO: 2000, SAC: 400, TD3: 400, DDPG: 400}[model_class]
+    n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
     kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
 

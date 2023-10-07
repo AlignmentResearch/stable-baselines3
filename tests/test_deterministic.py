@@ -1,14 +1,14 @@
 import numpy as np
 import pytest
 
-from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
+from stable_baselines3 import A2C, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.noise import NormalActionNoise
 
 N_STEPS_TRAINING = 500
 SEED = 0
 
 
-@pytest.mark.parametrize("algo", [A2C, DQN, PPO, SAC, TD3])
+@pytest.mark.parametrize("algo", [A2C, DQN, PPO, SAC, TD3, RecurrentPPO])
 def test_deterministic_training_common(algo):
     results = [[], []]
     rewards = [[], []]
@@ -25,9 +25,13 @@ def test_deterministic_training_common(algo):
             kwargs.update({"learning_starts": 100, "target_update_interval": 100})
         elif algo == PPO:
             kwargs.update({"n_steps": 64, "n_epochs": 4})
+        elif algo == RecurrentPPO:
+            kwargs.update({"policy_kwargs": dict(net_arch=[], enable_critic_lstm=True, lstm_hidden_size=8)})
+            kwargs.update({"n_steps": 50, "n_epochs": 4})
 
+    policy_str = "MlpLstmPolicy" if algo == RecurrentPPO else "MlpPolicy"
     for i in range(2):
-        model = algo("MlpPolicy", env_id, seed=SEED, **kwargs)
+        model = algo(policy_str, env_id, seed=SEED, **kwargs)
         model.learn(N_STEPS_TRAINING)
         env = model.get_env()
         obs = env.reset()

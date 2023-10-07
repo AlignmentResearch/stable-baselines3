@@ -6,11 +6,21 @@ import pytest
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3 import A2C, DQN, PPO, SAC, TD3
+from stable_baselines3 import A2C, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.envs import FakeImageEnv
-from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
+from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
+from stable_baselines3.common.preprocessing import (
+    is_image_space,
+    is_image_space_channels_first,
+)
 from stable_baselines3.common.utils import zip_strict
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, VecNormalize, VecTransposeImage, is_vecenv_wrapped
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecFrameStack,
+    VecNormalize,
+    VecTransposeImage,
+    is_vecenv_wrapped,
+)
 
 
 @pytest.mark.parametrize("model_class", [A2C, PPO, SAC, TD3, DQN])
@@ -315,7 +325,7 @@ def test_image_space_checks():
         assert not is_image_space_channels_first(channel_mid_space)
 
 
-@pytest.mark.parametrize("model_class", [A2C, PPO, DQN, SAC, TD3])
+@pytest.mark.parametrize("model_class", [A2C, PPO, DQN, SAC, TD3, RecurrentPPO])
 @pytest.mark.parametrize("normalize_images", [True, False])
 def test_image_like_input(model_class, normalize_images):
     """
@@ -342,8 +352,7 @@ def test_image_like_input(model_class, normalize_images):
         ),
         seed=1,
     )
-
-    if model_class in {A2C, PPO}:
+    if issubclass(model_class, OnPolicyAlgorithm):
         kwargs.update(dict(n_steps=64))
     else:
         # Avoid memory error when using replay buffer

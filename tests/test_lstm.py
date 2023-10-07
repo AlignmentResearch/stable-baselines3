@@ -6,14 +6,14 @@ import pytest
 from gymnasium import spaces
 from gymnasium.envs.classic_control import CartPoleEnv
 from gymnasium.wrappers.time_limit import TimeLimit
+
+from stable_baselines3 import RecurrentPPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import FakeImageEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import VecNormalize
-
-from sb3_contrib import RecurrentPPO
 
 
 class ToDictWrapper(gym.Wrapper):

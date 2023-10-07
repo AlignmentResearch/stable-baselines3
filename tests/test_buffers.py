@@ -1,15 +1,32 @@
 import gymnasium as gym
 import numpy as np
+import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer
+from stable_baselines3.common.buffers import (
+    DictReplayBuffer,
+    DictRolloutBuffer,
+    ReplayBuffer,
+    RolloutBuffer,
+)
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.type_aliases import DictReplayBufferSamples, ReplayBufferSamples
+from stable_baselines3.common.pytree_dataclass import tree_flatten
+from stable_baselines3.common.recurrent.buffers import (
+    RecurrentDictRolloutBuffer,
+    RecurrentRolloutBuffer,
+)
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
+from stable_baselines3.common.type_aliases import (
+    DictReplayBufferSamples,
+    ReplayBufferSamples,
+)
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
+
+EP_LENGTH: int = 100
 
 
 class DummyEnv(gym.Env):
@@ -23,7 +40,7 @@ class DummyEnv(gym.Env):
         self._observations = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]], dtype=np.float32)
         self._rewards = [1, 2, 3, 4, 5]
         self._t = 0
-        self._ep_length = 100
+        self._ep_length = EP_LENGTH
 
     def reset(self, *, seed=None, options=None):
         self._t = 0
@@ -53,7 +70,7 @@ class DummyDictEnv(gym.Env):
         self._observations = np.array([[1.0], [2.0], [3.0], [4.0], [5.0]], dtype=np.float32)
         self._rewards = [1, 2, 3, 4, 5]
         self._t = 0
-        self._ep_length = 100
+        self._ep_length = EP_LENGTH
 
     def reset(self, seed=None, options=None):
         self._t = 0
@@ -83,12 +100,12 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     env = make_vec_env(env)
     env = VecNormalize(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device="cpu")
+    buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device="cpu")
 
     # Interract and store transitions
     env.reset()
     obs = env.get_original_obs()
-    for _ in range(100):
+    for _ in range(EP_LENGTH):
         action = th.as_tensor(env.action_space.sample())
         _, _, done, info = env.step(action)
         next_obs = env.get_original_obs()
@@ -108,7 +125,9 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     assert np.allclose(sample.rewards.mean(0), np.zeros(1), atol=1)
 
 
-@pytest.mark.parametrize("replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer])
+@pytest.mark.parametrize(
+    "replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, RecurrentRolloutBuffer]
+)
 @pytest.mark.parametrize("device", ["cpu", "cuda", "auto"])
 def test_device_buffer(replay_buffer_cls, device):
     if device == "cuda" and not th.cuda.is_available():
@@ -119,35 +138,51 @@ def test_device_buffer(replay_buffer_cls, device):
         DictRolloutBuffer: DummyDictEnv,
         ReplayBuffer: DummyEnv,
         DictReplayBuffer: DummyDictEnv,
+        RecurrentRolloutBuffer: DummyEnv,
+        RecurrentDictRolloutBuffer: DummyDictEnv,
     }[replay_buffer_cls]
     env = make_vec_env(env)
 
-    buffer = replay_buffer_cls(100, env.observation_space, env.action_space, device=device)
+    if replay_buffer_cls == RecurrentRolloutBuffer:
+        buffer = RecurrentRolloutBuffer(
+            EP_LENGTH,
+            env.observation_space,
+            env.action_space,
+            hidden_state_shape=(EP_LENGTH, 1, env.num_envs, 4),
+            device=device,
+        )
+    else:
+        buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device)
 
     # Interract and store transitions
     obs = env.reset()
-    for _ in range(100):
+    for _ in range(EP_LENGTH):
         action = th.as_tensor(env.action_space.sample())
 
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(obs, action, reward, episode_start, values, log_prob)
+        elif replay_buffer_cls == RecurrentRolloutBuffer:
+            episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
+            one_lstm_states = (th.zeros((1, env.num_envs, 4)), th.zeros((1, env.num_envs, 4)))
+            hidden_states = RNNStates(one_lstm_states, one_lstm_states)
+            buffer.add(obs, action, reward, episode_start, values, log_prob, lstm_states=hidden_states)
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
 
     # Get data from the buffer
-    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
+    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer, RecurrentRolloutBuffer]:
         data = buffer.get(50)
     elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
-        data = buffer.sample(50)
+        data = [buffer.sample(50)]
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type
-    for value in list(data):
-        if isinstance(value, dict):
-            for key in value.keys():
-                assert value[key].device.type == desired_device
-        elif isinstance(value, th.Tensor):
+    for minibatch in list(data):
+        flattened_tensors, _ = tree_flatten(minibatch)
+        assert len(flattened_tensors) > 3
+        for value in flattened_tensors:
+            assert isinstance(value, th.Tensor)
             assert value.device.type == desired_device

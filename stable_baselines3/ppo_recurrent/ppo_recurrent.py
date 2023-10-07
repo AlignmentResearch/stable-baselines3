@@ -6,18 +6,30 @@ from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 import numpy as np
 import torch as th
 from gymnasium import spaces
+
 from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.recurrent.buffers import (
+    RecurrentDictRolloutBuffer,
+    RecurrentRolloutBuffer,
+)
+from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.type_aliases import RNNStates
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn, obs_as_tensor, safe_mean
+from stable_baselines3.common.utils import (
+    explained_variance,
+    get_schedule_fn,
+    obs_as_tensor,
+    safe_mean,
+)
 from stable_baselines3.common.vec_env import VecEnv
-
-from sb3_contrib.common.recurrent.buffers import RecurrentDictRolloutBuffer, RecurrentRolloutBuffer
-from sb3_contrib.common.recurrent.policies import RecurrentActorCriticPolicy
-from sb3_contrib.common.recurrent.type_aliases import RNNStates
-from sb3_contrib.ppo_recurrent.policies import CnnLstmPolicy, MlpLstmPolicy, MultiInputLstmPolicy
+from stable_baselines3.ppo_recurrent.policies import (
+    CnnLstmPolicy,
+    MlpLstmPolicy,
+    MultiInputLstmPolicy,
+)
 
 SelfRecurrentPPO = TypeVar("SelfRecurrentPPO", bound="RecurrentPPO")
 
@@ -71,6 +83,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "MlpLstmPolicy": MlpLstmPolicy,
         "CnnLstmPolicy": CnnLstmPolicy,
         "MultiInputLstmPolicy": MultiInputLstmPolicy,
+        "MlpPolicy": MlpLstmPolicy,
+        "CnnPolicy": CnnLstmPolicy,
+        "MultiInputPolicy": MultiInputLstmPolicy,
     }
 
     def __init__(
@@ -240,16 +255,16 @@ class RecurrentPPO(OnPolicyAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                episode_starts = th.tensor(self._last_episode_starts, dtype=th.float32, device=self.device)
+                episode_starts = th.tensor(self._last_episode_starts, dtype=th.bool, device=self.device)
                 actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
-
-            actions = actions.cpu().numpy()
 
             # Rescale and perform action
             clipped_actions = actions
             # Clip the actions to avoid out of bound error
             if isinstance(self.action_space, spaces.Box):
-                clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+                clipped_actions = th.clip(
+                    actions, th.as_tensor(self.action_space.low).to(actions), th.as_tensor(self.action_space.high).to(actions)
+                )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
 
@@ -282,8 +297,10 @@ class RecurrentPPO(OnPolicyAlgorithm):
                             lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
                         )
                         # terminal_lstm_state = None
-                        episode_starts = th.tensor([False], dtype=th.float32, device=self.device)
-                        terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[0]
+                        episode_starts = th.tensor([False], dtype=th.bool, device=self.device)
+                        terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
+                            0
+                        ].squeeze()
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
@@ -302,7 +319,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            episode_starts = th.tensor(dones, dtype=th.float32, device=self.device)
+            episode_starts = th.tensor(dones, dtype=th.bool, device=self.device)
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states.vf, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
@@ -435,7 +452,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
         self.logger.record("train/loss", loss.item())
-        self.logger.record("train/explained_variance", explained_var)
+        self.logger.record("train/explained_variance", explained_var.item())
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
 
