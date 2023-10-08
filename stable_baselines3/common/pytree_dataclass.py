@@ -1,4 +1,5 @@
 import dataclasses
+import functools
 from typing import (
     Any,
     Callable,
@@ -7,6 +8,7 @@ from typing import (
     Generic,
     List,
     Optional,
+    Protocol,
     Sequence,
     Tuple,
     TypeVar,
@@ -171,6 +173,9 @@ def tree_flatten(
 
 
 def tree_flatten(tree, is_leaf=None, *, none_is_leaf=False, namespace=SB3_NAMESPACE):
+    """
+    Flattens the PyTree (see `optree.tree_flatten`), expanding nodes using the SB3_NAMESPACE by default.
+    """
     return ot.tree_flatten(tree, is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
@@ -200,10 +205,20 @@ def tree_map(
 
 
 def tree_map(func, tree, *rests, is_leaf=None, none_is_leaf=False, namespace=SB3_NAMESPACE):  # type: ignore
+    """
+    Maps a function over a PyTree (see `optree.tree_map`), over the trees in `tree` and `*rests`, expanding nodes using
+    the SB3_NAMESPACE by default.
+    """
     return ot.tree_map(func, tree, *rests, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
 def tree_empty(tree: ot.PyTree, namespace: str = SB3_NAMESPACE) -> bool:
+    """Is the tree `tree` empty, i.e. without leaves?
+
+    :param tree: the tree to check
+    :param namespace: when expanding nodes, use this namespace
+    :return: True iff the tree is empty
+    """
     flattened_state, _ = ot.tree_flatten(tree, namespace=namespace)
     return not bool(flattened_state)
 
@@ -216,4 +231,15 @@ def tree_index(
     none_is_leaf: bool = False,
     namespace: str = SB3_NAMESPACE,
 ) -> ConcreteTensorTree:
+    """
+    Index each leaf of a PyTree of Tensors using the index `idx`.
+
+    :param tree: the tree of tensors to index
+    :param idx: the index to use
+    :param is_leaf: whether to stop tree traversal at any particular node. `is_leaf(x: PyTree[Tensor])` should return
+        True if the traversal should stop at `x`.
+    :param none_is_leaf: Whether to consider `None` as a leaf that should be indexed.
+    :param namespace:
+    :returns: tree of indexed Tensors
+    """
     return tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
