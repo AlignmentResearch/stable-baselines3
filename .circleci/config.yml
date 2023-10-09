@@ -51,7 +51,7 @@ jobs:
           command: ruff .
       - run:
           name: Typecheck (mypy)
-          command: mypy stable_baselines3/common/pytree_dataclass.py
+          command: mypy --exclude '^stable_baselines3/common/recurrent/policies\.py$' stable_baselines3/common
   pytype:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
@@ -62,7 +62,7 @@ jobs:
     working_directory: /workspace/third_party/stable-baselines3
     steps:
       - checkout
-      - run: pytype -j 4 stable_baselines3/common/pytree_dataclass.py
+      - run: pytype --keep-going -x stable_baselines3/common/recurrent/policies.py stable_baselines3/common
   py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>

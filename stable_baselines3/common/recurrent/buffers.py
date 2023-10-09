@@ -1,16 +1,21 @@
+import dataclasses
 from functools import partial
 from typing import Callable, Generator, Optional, Tuple, Union
 
 import numpy as np
-import optree as ot
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
+from stable_baselines3.common.buffers import RolloutBuffer
+from stable_baselines3.common.pytree_dataclass import (
+    TensorTree,
+    tree_flatten,
+    tree_index,
+    tree_map,
+)
 from stable_baselines3.common.recurrent.type_aliases import (
-    RecurrentDictRolloutBufferSamples,
+    RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
-    RNNStates,
 )
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -60,7 +65,7 @@ def pad_and_flatten(
 def create_sequencers(
     episode_starts: th.Tensor,
     env_change: th.Tensor,
-) -> Tuple[th.Tensor, Callable, Callable]:
+) -> Tuple[th.Tensor, int, Callable, Callable]:
     """
     Create the utility function to chunk data into
     sequences and pad them to create fixed size tensors.
@@ -87,22 +92,63 @@ def create_sequencers(
         ]
     )
 
+    lengths_except_last = seq_start_indices[1:] - seq_start_indices[:-1]
+    last_length = len(episode_starts) - seq_start_indices[-1].item()
+    if lengths_except_last.numel():
+        max_length = int(max(lengths_except_last.max().item(), last_length))
+    else:
+        max_length = int(last_length)
+
     # Create padding method for this minibatch
     # to avoid repeating arguments (seq_start_indices, seq_end_indices)
     local_pad = partial(pad, seq_start_indices, seq_end_indices)
     local_pad_and_flatten = partial(pad_and_flatten, seq_start_indices, seq_end_indices)
-    return seq_start_indices, local_pad, local_pad_and_flatten
+    return seq_start_indices, max_length, local_pad, local_pad_and_flatten
+
+
+def space_to_example(
+    batch_shape: Tuple[int, ...],
+    space: spaces.Space,
+    *,
+    device: Optional[th.device] = None,
+    ensure_non_batch_dim: bool = False,
+) -> TensorTree:
+    if isinstance(space, spaces.Dict):
+        return {
+            k: space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim)
+            for k, v in space.items()
+        }
+    if isinstance(space, spaces.Tuple):
+        return tuple(space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for v in space)
+
+    if isinstance(space, spaces.Box):
+        space_shape = space.shape
+        space_dtype = th.float32
+    elif isinstance(space, spaces.Discrete):
+        space_shape = ()
+        space_dtype = th.long
+    elif isinstance(space, spaces.MultiDiscrete):
+        space_shape = (len(space.nvec),)
+        space_dtype = th.long
+    elif isinstance(space, spaces.MultiBinary):
+        space_shape = space.n if isinstance(space.n, tuple) else (space.n,)
+        space_dtype = th.float32
+    else:
+        raise TypeError(f"Unknown space type {type(space)} for {space}")
+
+    if ensure_non_batch_dim and not space_shape:
+        space_shape = (1,)
+    return th.zeros((*batch_shape, *space_shape), dtype=space_dtype, device=device)
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
     """
-    Rollout buffer that also stores the LSTM cell and hidden states.
+    Rollout buffer that also stores the RNN states.
 
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
     :param action_space: Action space
-    :param hidden_state_shape: Shape of the buffer that will collect lstm states
-        (n_steps, lstm.num_layers, n_envs, lstm.hidden_size)
+    :param hidden_state_example: Example buffer that will collect RNN states.
     :param device: PyTorch device
     :param gae_lambda: Factor for trade-off of bias vs variance for Generalized Advantage Estimator
         Equivalent to classic advantage when set to 1.
@@ -115,62 +161,109 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        hidden_state_shape: Tuple[int, int, int, int],
+        hidden_state_example: TensorTree,
         device: Union[th.device, str] = "auto",
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
     ):
-        self.hidden_state_shape = hidden_state_shape
-        self.seq_start_indices, self.seq_end_indices = None, None
-        super().__init__(buffer_size, observation_space, action_space, device, gae_lambda, gamma, n_envs)
+        super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device=device, n_envs=n_envs)
+        self.hidden_state_example = hidden_state_example
+        self.gae_lambda = gae_lambda
+        self.gamma = gamma
+
+        batch_shape = (self.buffer_size, self.n_envs)
+        device = self.device
+
+        self.observation_space_example = space_to_example((), observation_space)
+
+        self.advantages = th.zeros(batch_shape, dtype=th.float32, device=device)
+        self.returns = th.zeros(batch_shape, dtype=th.float32, device=device)
+        self.data = RecurrentRolloutBufferData(
+            observations=space_to_example(batch_shape, self.observation_space, device=device, ensure_non_batch_dim=True),
+            actions=th.zeros(
+                (*batch_shape, self.action_dim),
+                dtype=th.long if isinstance(self.action_space, (spaces.Discrete, spaces.MultiDiscrete)) else th.float32,
+                device=device,
+            ),
+            rewards=th.zeros(batch_shape, dtype=th.float32, device=device),
+            episode_starts=th.zeros(batch_shape, dtype=th.bool, device=device),
+            values=th.zeros(batch_shape, dtype=th.float32, device=device),
+            log_probs=th.zeros(batch_shape, dtype=th.float32, device=device),
+            hidden_states=tree_map(
+                lambda x: th.zeros((self.buffer_size, x.shape[0], self.n_envs, *x.shape[1:]), dtype=x.dtype, device=device),
+                hidden_state_example,
+            ),
+        )
+
+    # Expose attributes of the RecurrentRolloutBufferData in the top-level to conform to the RolloutBuffer interface
+    @property
+    def episode_starts(self) -> th.Tensor:  # type: ignore[override]
+        return self.data.episode_starts
+
+    @property
+    def values(self) -> th.Tensor:  # type: ignore[override]
+        return self.data.values
+
+    @property
+    def rewards(self) -> th.Tensor:  # type: ignore[override]
+        assert self.data.rewards is not None, "RecurrentRolloutBufferData should store rewards"
+        return self.data.rewards
 
     def reset(self):
-        super().reset()
-        self.hidden_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.cell_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.hidden_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.cell_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
+        self.returns.zero_()
+        self.advantages.zero_()
+        tree_map(lambda x: x.zero_(), self.data)
+        super(RolloutBuffer, self).reset()
 
-    def add(self, *args, lstm_states: RNNStates, **kwargs) -> None:
+    def extend(self, data: RecurrentRolloutBufferData) -> None:  # type: ignore[override]
         """
-        :param hidden_states: LSTM cell and hidden state
+        Add a new batch of transitions to the buffer
         """
-        self.hidden_states_pi[self.pos].copy_(lstm_states.pi[0], non_blocking=True)
-        self.cell_states_pi[self.pos].copy_(lstm_states.pi[1], non_blocking=True)
-        self.hidden_states_vf[self.pos].copy_(lstm_states.vf[0], non_blocking=True)
-        self.cell_states_vf[self.pos].copy_(lstm_states.vf[1], non_blocking=True)
 
-        super().add(*(th.as_tensor(a) for a in args), **kwargs)
+        # Do a for loop along the batch axis.
+        # Treat lists as leaves to avoid flattening the infos.
+        def _is_list(t):
+            return isinstance(t, list)
 
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentRolloutBufferSamples, None, None]:
+        tensors: list[th.Tensor]
+        tensors, _ = tree_flatten(data, is_leaf=_is_list)  # type: ignore
+        len_tensors = len(tensors[0])
+        assert all(len(t) == len_tensors for t in tensors), "All tensors must have the same batch size"
+        for i in range(len_tensors):
+            self.add(tree_index(data, i, is_leaf=_is_list))
+
+    def add(self, data: RecurrentRolloutBufferData, **kwargs) -> None:  # type: ignore[override]
+        """
+        :param hidden_states: Hidden state of the RNN
+        """
+        if data.rewards is None:
+            raise ValueError("Recorded samples must contain a reward")
+        new_data = dataclasses.replace(
+            data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
+        )
+
+        tree_map(
+            lambda buf, x: buf[self.pos].copy_(x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1), non_blocking=True),
+            self.data,
+            new_data,
+        )
+        # Increment pos
+        self.pos += 1
+        if self.pos == self.buffer_size:
+            self.full = True
+
+    def get(  # type: ignore[override]
+        self, batch_size: Optional[int] = None
+    ) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
 
-        # Prepare the data
-        if not self.generator_ready:
-            # hidden_state_shape = (self.n_steps, lstm.num_layers, self.n_envs, lstm.hidden_size)
-            # swap first to (self.n_steps, self.n_envs, lstm.num_layers, lstm.hidden_size)
-            for tensor in ["hidden_states_pi", "cell_states_pi", "hidden_states_vf", "cell_states_vf"]:
-                self.__dict__[tensor] = self.__dict__[tensor].swapaxes(1, 2)
-
-            # flatten but keep the sequence order
-            # 1. (n_steps, n_envs, *tensor_shape) -> (n_envs, n_steps, *tensor_shape)
-            # 2. (n_envs, n_steps, *tensor_shape) -> (n_envs * n_steps, *tensor_shape)
-            for tensor in [
-                "observations",
-                "actions",
-                "values",
-                "log_probs",
-                "advantages",
-                "returns",
-                "hidden_states_pi",
-                "cell_states_pi",
-                "hidden_states_vf",
-                "cell_states_vf",
-                "episode_starts",
-            ]:
-                self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
-            self.generator_ready = True
+        hidden_states = tree_map(lambda x: x.swapaxes(1, 2), self.data.hidden_states)
+        data: RecurrentRolloutBufferData = tree_map(
+            self.swap_and_flatten, dataclasses.replace(self.data, hidden_states=hidden_states)  # type: ignore[misc]
+        )
+        returns = self.swap_and_flatten(self.returns)
+        advantages = self.swap_and_flatten(self.advantages)
 
         # Return everything, don't create minibatches
         if batch_size is None:
@@ -184,7 +277,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         indices = th.arange(self.buffer_size * self.n_envs)
         indices = th.cat((indices[split_index:], indices[:split_index]))
 
-        env_change = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool)
+        env_change = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool, device=self.device)
         # Flag first timestep as change of environment
         env_change[0, :] = True
         env_change = self.swap_and_flatten(env_change)
@@ -192,204 +285,52 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         start_idx = 0
         while start_idx < self.buffer_size * self.n_envs:
             batch_inds = indices[start_idx : start_idx + batch_size]
-            yield self._get_samples(batch_inds, env_change)
+            yield self._get_samples(data, returns, advantages, batch_inds, env_change)
             start_idx += batch_size
 
-    def _get_samples(
+    def _get_samples(  # type: ignore[override]
         self,
+        data: RecurrentRolloutBufferData,
+        returns: th.Tensor,
+        advantages: th.Tensor,
         batch_inds: th.Tensor,
         env_change: th.Tensor,
         env: Optional[VecNormalize] = None,
     ) -> RecurrentRolloutBufferSamples:
         # Retrieve sequence starts and utility function
-        self.seq_start_indices, self.pad, self.pad_and_flatten = create_sequencers(
-            self.episode_starts[batch_inds], env_change[batch_inds]
+        local_seq_start_indices, max_length, local_pad, local_pad_and_flatten = create_sequencers(
+            data.episode_starts[batch_inds], env_change[batch_inds]
         )
 
         # Number of sequences
-        n_seq = len(self.seq_start_indices)
-        max_length = self.pad(self.actions[batch_inds]).shape[1]
+        n_seq = len(local_seq_start_indices)
         padded_batch_size = n_seq * max_length
-        # We retrieve the lstm hidden states that will allow
-        # to properly initialize the LSTM at the beginning of each sequence
-        lstm_states_pi = (
-            # 1. (n_envs * n_steps, n_layers, dim) -> (batch_size, n_layers, dim)
-            # 2. (batch_size, n_layers, dim)  -> (n_seq, n_layers, dim)
-            # 3. (n_seq, n_layers, dim) -> (n_layers, n_seq, dim)
-            self.hidden_states_pi[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-            self.cell_states_pi[batch_inds][self.seq_start_indices].swapaxes(0, 1),
+        # We retrieve the RNN hidden states that will allow
+        # to properly initialize the RNN at the beginning of each sequence
+        # NOTE: this only gets the first index. For transformers we'll have to get *all* previous KV-vectors.
+
+        rnn_states = tree_map(
+            lambda x: self.to_device(x[batch_inds][local_seq_start_indices].swapaxes(0, 1)).contiguous(), data.hidden_states
         )
-        lstm_states_vf = (
-            # (n_envs * n_steps, n_layers, dim) -> (n_layers, n_seq, dim)
-            self.hidden_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-            self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
+
+        observations = tree_map(
+            lambda x, example: local_pad(x[batch_inds]).view(padded_batch_size, *example.shape),
+            data.observations,
+            self.observation_space_example,
         )
-        lstm_states_pi = (
-            self.to_device((lstm_states_pi[0])).contiguous(),
-            self.to_device((lstm_states_pi[1])).contiguous(),
-        )
-        lstm_states_vf = (
-            self.to_device((lstm_states_vf[0])).contiguous(),
-            self.to_device((lstm_states_vf[1])).contiguous(),
-        )
+
         return RecurrentRolloutBufferSamples(
             # (batch_size, obs_dim) -> (n_seq, max_length, obs_dim) -> (n_seq * max_length, obs_dim)
-            observations=self.pad(self.observations[batch_inds]).reshape((padded_batch_size, *self.obs_shape)),
-            actions=self.pad(self.actions[batch_inds]).reshape((padded_batch_size,) + self.actions.shape[1:]),
-            old_values=self.pad_and_flatten(self.values[batch_inds]),
-            old_log_prob=self.pad_and_flatten(self.log_probs[batch_inds]),
-            advantages=self.pad_and_flatten(self.advantages[batch_inds]),
-            returns=self.pad_and_flatten(self.returns[batch_inds]),
-            lstm_states=RNNStates(lstm_states_pi, lstm_states_vf),
-            episode_starts=self.pad_and_flatten(self.episode_starts[batch_inds]),
-            mask=self.pad_and_flatten(th.ones_like(self.returns[batch_inds])),
-        )
-
-
-class RecurrentDictRolloutBuffer(DictRolloutBuffer):
-    """
-    Dict Rollout buffer used in on-policy algorithms like A2C/PPO.
-    Extends the RecurrentRolloutBuffer to use dictionary observations
-
-    :param buffer_size: Max number of element in the buffer
-    :param observation_space: Observation space
-    :param action_space: Action space
-    :param hidden_state_shape: Shape of the buffer that will collect lstm states
-    :param device: PyTorch device
-    :param gae_lambda: Factor for trade-off of bias vs variance for Generalized Advantage Estimator
-        Equivalent to classic advantage when set to 1.
-    :param gamma: Discount factor
-    :param n_envs: Number of parallel environments
-    """
-
-    def __init__(
-        self,
-        buffer_size: int,
-        observation_space: spaces.Space,
-        action_space: spaces.Space,
-        hidden_state_shape: Tuple[int, int, int, int],
-        device: Union[th.device, str] = "auto",
-        gae_lambda: float = 1,
-        gamma: float = 0.99,
-        n_envs: int = 1,
-    ):
-        self.hidden_state_shape = hidden_state_shape
-        self.seq_start_indices, self.seq_end_indices = None, None
-        super().__init__(buffer_size, observation_space, action_space, device, gae_lambda, gamma, n_envs=n_envs)
-
-    def reset(self):
-        super().reset()
-        self.hidden_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.cell_states_pi = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.hidden_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-        self.cell_states_vf = th.zeros(self.hidden_state_shape, dtype=th.float32, device=self.device)
-
-    def add(self, *args, lstm_states: RNNStates, **kwargs) -> None:
-        """
-        :param hidden_states: LSTM cell and hidden state
-        """
-        self.hidden_states_pi[self.pos].copy_(lstm_states.pi[0], non_blocking=True)
-        self.cell_states_pi[self.pos].copy_(lstm_states.pi[1], non_blocking=True)
-        self.hidden_states_vf[self.pos].copy_(lstm_states.vf[0], non_blocking=True)
-        self.cell_states_vf[self.pos].copy_(lstm_states.vf[1], non_blocking=True)
-
-        super().add(*ot.tree_map(th.as_tensor, args), **kwargs)
-
-    def get(self, batch_size: Optional[int] = None) -> Generator[RecurrentDictRolloutBufferSamples, None, None]:
-        assert self.full, "Rollout buffer must be full before sampling from it"
-
-        # Prepare the data
-        if not self.generator_ready:
-            # hidden_state_shape = (self.n_steps, lstm.num_layers, self.n_envs, lstm.hidden_size)
-            # swap first to (self.n_steps, self.n_envs, lstm.num_layers, lstm.hidden_size)
-            for tensor in ["hidden_states_pi", "cell_states_pi", "hidden_states_vf", "cell_states_vf"]:
-                self.__dict__[tensor] = self.__dict__[tensor].swapaxes(1, 2)
-
-            for key, obs in self.observations.items():
-                self.observations[key] = self.swap_and_flatten(obs)
-
-            for tensor in [
-                "actions",
-                "values",
-                "log_probs",
-                "advantages",
-                "returns",
-                "hidden_states_pi",
-                "cell_states_pi",
-                "hidden_states_vf",
-                "cell_states_vf",
-                "episode_starts",
-            ]:
-                self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
-            self.generator_ready = True
-
-        # Return everything, don't create minibatches
-        if batch_size is None:
-            batch_size = self.buffer_size * self.n_envs
-
-        # Trick to shuffle a bit: keep the sequence order
-        # but split the indices in two
-        split_index = int(np.random.randint(self.buffer_size * self.n_envs))
-        indices = th.arange(self.buffer_size * self.n_envs)
-        indices = th.cat((indices[split_index:], indices[:split_index]))
-
-        env_change = th.zeros((self.buffer_size, self.n_envs), dtype=th.bool)
-        # Flag first timestep as change of environment
-        env_change[0, :] = True
-        env_change = self.swap_and_flatten(env_change)
-
-        start_idx = 0
-        while start_idx < self.buffer_size * self.n_envs:
-            batch_inds = indices[start_idx : start_idx + batch_size]
-            yield self._get_samples(batch_inds, env_change)
-            start_idx += batch_size
-
-    def _get_samples(
-        self,
-        batch_inds: th.Tensor,
-        env_change: th.Tensor,
-        env: Optional[VecNormalize] = None,
-    ) -> RecurrentDictRolloutBufferSamples:
-        # Retrieve sequence starts and utility function
-        self.seq_start_indices, self.pad, self.pad_and_flatten = create_sequencers(
-            self.episode_starts[batch_inds], env_change[batch_inds]
-        )
-
-        n_seq = len(self.seq_start_indices)
-        max_length = self.pad(self.actions[batch_inds]).shape[1]
-        padded_batch_size = n_seq * max_length
-        # We retrieve the lstm hidden states that will allow
-        # to properly initialize the LSTM at the beginning of each sequence
-        lstm_states_pi = (
-            # (n_envs * n_steps, n_layers, dim) -> (n_layers, n_seq, dim)
-            self.hidden_states_pi[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-            self.cell_states_pi[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-        )
-        lstm_states_vf = (
-            # (n_envs * n_steps, n_layers, dim) -> (n_layers, n_seq, dim)
-            self.hidden_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-            self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
-        )
-        lstm_states_pi = (
-            self.to_device((lstm_states_pi[0])).contiguous(),
-            self.to_device((lstm_states_pi[1])).contiguous(),
-        )
-        lstm_states_vf = (
-            self.to_device((lstm_states_vf[0])).contiguous(),
-            self.to_device((lstm_states_vf[1])).contiguous(),
-        )
-
-        observations = {key: self.pad(obs[batch_inds]) for (key, obs) in self.observations.items()}
-        observations = {key: obs.reshape((padded_batch_size,) + self.obs_shape[key]) for (key, obs) in observations.items()}
-
-        return RecurrentDictRolloutBufferSamples(
             observations=observations,
-            actions=self.pad(self.actions[batch_inds]).reshape((padded_batch_size,) + self.actions.shape[1:]),
-            old_values=self.pad_and_flatten(self.values[batch_inds]),
-            old_log_prob=self.pad_and_flatten(self.log_probs[batch_inds]),
-            advantages=self.pad_and_flatten(self.advantages[batch_inds]),
-            returns=self.pad_and_flatten(self.returns[batch_inds]),
-            lstm_states=RNNStates(lstm_states_pi, lstm_states_vf),
-            episode_starts=self.pad_and_flatten(self.episode_starts[batch_inds]),
-            mask=self.pad_and_flatten(th.ones_like(self.returns[batch_inds])),
+            actions=local_pad(data.actions[batch_inds]).view(padded_batch_size, *data.actions.shape[1:]),
+            old_values=local_pad_and_flatten(data.values[batch_inds]),
+            old_log_prob=local_pad_and_flatten(data.log_probs[batch_inds]),
+            advantages=local_pad_and_flatten(advantages[batch_inds]),
+            returns=local_pad_and_flatten(returns[batch_inds]),
+            hidden_states=rnn_states,
+            episode_starts=local_pad_and_flatten(data.episode_starts[batch_inds]),
+            mask=local_pad_and_flatten(th.ones(returns[batch_inds].shape, dtype=th.bool, device=self.device)),
         )
+
+
+RecurrentDictRolloutBuffer = RecurrentRolloutBuffer

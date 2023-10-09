@@ -16,7 +16,11 @@ from stable_baselines3.common.recurrent.buffers import (
     RecurrentRolloutBuffer,
 )
 from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
-from stable_baselines3.common.recurrent.type_aliases import RNNStates
+from stable_baselines3.common.recurrent.type_aliases import (
+    RecurrentRolloutBufferData,
+    RNNStates,
+    non_null,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
@@ -88,13 +92,17 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "MultiInputPolicy": MultiInputLstmPolicy,
     }
 
+    policy: RecurrentActorCriticPolicy
+    policy_class: Type[RecurrentActorCriticPolicy]
+    rollout_buffer: RecurrentRolloutBuffer
+
     def __init__(
         self,
         policy: Union[str, Type[RecurrentActorCriticPolicy]],
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
-        batch_size: Optional[int] = 128,
+        batch_size: int = 128,
         n_epochs: int = 10,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -175,9 +183,21 @@ class RecurrentPPO(OnPolicyAlgorithm):
         if not isinstance(self.policy, RecurrentActorCriticPolicy):
             raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        single_hidden_state_shape = (lstm.num_layers, self.n_envs, lstm.hidden_size)
+        per_timestep_hidden_state_shape = (lstm.num_layers, self.n_envs, lstm.hidden_size)
         # hidden and cell states for actor and critic
         self._last_lstm_states = RNNStates(
+            (
+                th.zeros(per_timestep_hidden_state_shape, device=self.device),
+                th.zeros(per_timestep_hidden_state_shape, device=self.device),
+            ),
+            (
+                th.zeros(per_timestep_hidden_state_shape, device=self.device),
+                th.zeros(per_timestep_hidden_state_shape, device=self.device),
+            ),
+        )
+
+        single_hidden_state_shape = (lstm.num_layers, lstm.hidden_size)
+        hidden_state_example = RNNStates(
             (
                 th.zeros(single_hidden_state_shape, device=self.device),
                 th.zeros(single_hidden_state_shape, device=self.device),
@@ -188,13 +208,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
             ),
         )
 
-        hidden_state_buffer_shape = (self.n_steps, lstm.num_layers, self.n_envs, lstm.hidden_size)
-
         self.rollout_buffer = buffer_cls(
             self.n_steps,
             self.observation_space,
             self.action_space,
-            hidden_state_buffer_shape,
+            hidden_state_example,
             self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
@@ -209,11 +227,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 
-    def collect_rollouts(
+    def collect_rollouts(  # type: ignore[override]
         self,
         env: VecEnv,
         callback: BaseCallback,
-        rollout_buffer: RolloutBuffer,
+        rollout_buffer: RecurrentRolloutBuffer,
         n_rollout_steps: int,
     ) -> bool:
         """
@@ -229,9 +247,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         :return: True if function returned with at least `n_rollout_steps`
             collected, False if callback terminated rollout prematurely.
         """
-        assert isinstance(
-            rollout_buffer, (RecurrentRolloutBuffer, RecurrentDictRolloutBuffer)
-        ), f"{rollout_buffer} doesn't support recurrent policy"
+        assert isinstance(rollout_buffer, RecurrentRolloutBuffer), f"{rollout_buffer} doesn't support recurrent policy"
 
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
@@ -255,7 +271,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                episode_starts = th.tensor(self._last_episode_starts, dtype=th.bool, device=self.device)
+                episode_starts = non_null(self._last_episode_starts)
                 actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
 
             # Rescale and perform action
@@ -304,13 +320,15 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     rewards[idx] += self.gamma * terminal_value
 
             rollout_buffer.add(
-                self._last_obs,
-                actions,
-                rewards,
-                self._last_episode_starts,
-                values,
-                log_probs,
-                lstm_states=self._last_lstm_states,
+                RecurrentRolloutBufferData(
+                    self._last_obs,
+                    actions,
+                    rewards,
+                    non_null(self._last_episode_starts),
+                    values.squeeze(-1),
+                    log_probs,
+                    hidden_states=non_null(self._last_lstm_states),
+                )
             )
 
             self._last_obs = new_obs
@@ -368,7 +386,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 values, log_prob, entropy = self.policy.evaluate_actions(
                     rollout_data.observations,
                     actions,
-                    rollout_data.lstm_states,
+                    rollout_data.hidden_states,
                     rollout_data.episode_starts,
                 )
 
