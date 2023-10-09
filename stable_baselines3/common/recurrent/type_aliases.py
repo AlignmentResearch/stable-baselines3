@@ -41,6 +41,3 @@ class RecurrentRolloutBufferSamples(PyTreeDataclass[th.Tensor]):
     advantages: th.Tensor
     returns: th.Tensor
     mask: th.Tensor
-
-
-RecurrentDictRolloutBufferSamples = RecurrentRolloutBufferSamples

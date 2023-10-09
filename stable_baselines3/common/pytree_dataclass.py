@@ -42,7 +42,10 @@ SB3_NAMESPACE = "stable-baselines3"
 # We need to inherit from `type(CustomTreeNode)` to prevent conflicts due to different-inheritance in metaclasses.
 # - For some reason just inheriting from `typing._ProtocolMeta` does not get rid of that error.
 # - Inheriting from `typing._GenericAlias` is impossible, as it's a `typing._Final` class.
-class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore
+#
+# But in mypy, inheriting from a dynamic base class from `type` is not supported, so we disable type checking for this
+# line.
+class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore[misc]
     """Metaclass to register dataclasses as PyTrees.
 
     Usage:
@@ -88,6 +91,9 @@ class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore
 class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
     _names_cache: ClassVar[Optional[Tuple[str, ...]]] = None
 
+    # Mark this class as a dataclass, for type checking purposes.
+    __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field[Any]]]
+
     @classmethod
     def _names(cls) -> Tuple[str, ...]:
         if cls._names_cache is None:
@@ -100,6 +106,8 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
         seq, _, _ = self.tree_flatten()
         return iter(seq)
 
+    # The annotations here are invalid for Pytype because T does not appear in the rest of the function. But it does
+    # appear as a parameter of the containing class, so it's actually not an error.
     def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:  # pytype: disable=invalid-annotation
         names = self._names()
         return tuple(getattr(self, n) for n in names), None, names
@@ -163,6 +171,9 @@ def tree_flatten(
 
 
 def tree_flatten(tree, is_leaf=None, *, none_is_leaf=False, namespace=SB3_NAMESPACE):
+    """
+    Flattens the PyTree (see `optree.tree_flatten`), expanding nodes using the SB3_NAMESPACE by default.
+    """
     return ot.tree_flatten(tree, is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
@@ -179,8 +190,9 @@ def tree_map(
 
 
 @overload
-def tree_map(  # pytype: disable=invalid-annotation
-    func: Callable[..., U],
+def tree_map(
+    # This annotation is supposedly invalid for Pytype because U only appears once.
+    func: Callable[..., U],  # pytype: disable=invalid-annotation
     tree: PyTree[T],
     *rests: Any,
     is_leaf: Callable[[T], bool] | None = None,
@@ -191,10 +203,20 @@ def tree_map(  # pytype: disable=invalid-annotation
 
 
 def tree_map(func, tree, *rests, is_leaf=None, none_is_leaf=False, namespace=SB3_NAMESPACE):  # type: ignore
+    """
+    Maps a function over a PyTree (see `optree.tree_map`), over the trees in `tree` and `*rests`, expanding nodes using
+    the SB3_NAMESPACE by default.
+    """
     return ot.tree_map(func, tree, *rests, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
 def tree_empty(tree: ot.PyTree, namespace: str = SB3_NAMESPACE) -> bool:
+    """Is the tree `tree` empty, i.e. without leaves?
+
+    :param tree: the tree to check
+    :param namespace: when expanding nodes, use this namespace
+    :return: True iff the tree is empty
+    """
     flattened_state, _ = ot.tree_flatten(tree, namespace=namespace)
     return not bool(flattened_state)
 
@@ -207,4 +229,15 @@ def tree_index(
     none_is_leaf: bool = False,
     namespace: str = SB3_NAMESPACE,
 ) -> ConcreteTensorTree:
-    return ot.tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)  # type: ignore
+    """
+    Index each leaf of a PyTree of Tensors using the index `idx`.
+
+    :param tree: the tree of tensors to index
+    :param idx: the index to use
+    :param is_leaf: whether to stop tree traversal at any particular node. `is_leaf(x: PyTree[Tensor])` should return
+        True if the traversal should stop at `x`.
+    :param none_is_leaf: Whether to consider `None` as a leaf that should be indexed.
+    :param namespace:
+    :returns: tree of indexed Tensors
+    """
+    return tree_map(lambda x: x[idx], tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)

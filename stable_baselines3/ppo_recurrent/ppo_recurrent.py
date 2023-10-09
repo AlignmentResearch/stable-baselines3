@@ -11,12 +11,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.pytree_dataclass import tree_map
-from stable_baselines3.common.recurrent.buffers import (
-    RecurrentRolloutBuffer,
-    RecurrentRolloutBufferData,
-)
+from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
 from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
-from stable_baselines3.common.recurrent.type_aliases import RNNStates, non_null
+from stable_baselines3.common.recurrent.type_aliases import (
+    RecurrentRolloutBufferData,
+    RNNStates,
+    non_null,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
@@ -266,10 +267,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                episode_starts = self._last_episode_starts
-                actions, values, log_probs, lstm_states = self.policy.forward(
-                    obs_tensor, lstm_states, non_null(episode_starts)
-                )
+                episode_starts = non_null(self._last_episode_starts)
+                actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
 
             # Rescale and perform action
             clipped_actions = actions
