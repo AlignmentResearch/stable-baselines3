@@ -1,6 +1,5 @@
 import gymnasium as gym
 import numpy as np
-import optree as ot
 import pytest
 import torch as th
 from gymnasium import spaces

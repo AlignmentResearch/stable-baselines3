@@ -1,5 +1,4 @@
 import dataclasses
-import functools
 from typing import (
     Any,
     Callable,
@@ -8,7 +7,6 @@ from typing import (
     Generic,
     List,
     Optional,
-    Protocol,
     Sequence,
     Tuple,
     TypeVar,

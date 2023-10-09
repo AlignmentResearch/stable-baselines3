@@ -7,7 +7,6 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
-from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
