@@ -225,12 +225,12 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
         )
         lstm_states_pi = (
-            self.to_device((lstm_states_pi[0])).contiguous(),
-            self.to_device((lstm_states_pi[1])).contiguous(),
+            self.to_device(lstm_states_pi[0]).contiguous(),
+            self.to_device(lstm_states_pi[1]).contiguous(),
         )
         lstm_states_vf = (
-            self.to_device((lstm_states_vf[0])).contiguous(),
-            self.to_device((lstm_states_vf[1])).contiguous(),
+            self.to_device(lstm_states_vf[0]).contiguous(),
+            self.to_device(lstm_states_vf[1]).contiguous(),
         )
         return RecurrentRolloutBufferSamples(
             # (batch_size, obs_dim) -> (n_seq, max_length, obs_dim) -> (n_seq * max_length, obs_dim)
@@ -371,12 +371,12 @@ class RecurrentDictRolloutBuffer(DictRolloutBuffer):
             self.cell_states_vf[batch_inds][self.seq_start_indices].swapaxes(0, 1),
         )
         lstm_states_pi = (
-            self.to_device((lstm_states_pi[0])).contiguous(),
-            self.to_device((lstm_states_pi[1])).contiguous(),
+            self.to_device(lstm_states_pi[0]).contiguous(),
+            self.to_device(lstm_states_pi[1]).contiguous(),
         )
         lstm_states_vf = (
-            self.to_device((lstm_states_vf[0])).contiguous(),
-            self.to_device((lstm_states_vf[1])).contiguous(),
+            self.to_device(lstm_states_vf[0]).contiguous(),
+            self.to_device(lstm_states_vf[1]).contiguous(),
         )
 
         observations = {key: self.pad(obs[batch_inds]) for (key, obs) in self.observations.items()}
