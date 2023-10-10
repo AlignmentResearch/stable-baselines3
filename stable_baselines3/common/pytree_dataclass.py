@@ -23,7 +23,7 @@ from stable_baselines3.common.type_aliases import TensorIndex
 from stable_baselines3.common.utils import zip_strict
 
 __all__ = [
-    "PyTreeDataclass",
+    "FrozenPyTreeDataclass",
     "MutablePyTreeDataclass",
     "TensorTree",
     "tree_empty",
@@ -52,45 +52,68 @@ class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore[misc]
         ...
     """
 
+    # We need to have this `currently_registering` variable because, in the course of making a DataClass with __slots__,
+    # another class is created. So this will be called *twice* for every dataclass we annotate with this metaclass.
     currently_registering: ClassVar[Optional[type]] = None
 
     def __new__(mcs, name, bases, namespace, slots=True, **kwargs):
+        # First: create the class in the normal way.
         cls = super().__new__(mcs, name, bases, namespace)
 
         if dataclasses.is_dataclass(cls):
+            # If the class we're registering is already a Dataclass, it means it is a descendant of FrozenPyTreeDataclass or
+            # MutablePyTreeDataclass.
+            # This includes the children which are created when we create a dataclass with __slots__.
+
             if mcs.currently_registering is not None:
+                # We've already created and annotated a class without __slots__, now we create the one with __slots__
+                # that will actually get returned after from the __new__ method.
                 assert mcs.currently_registering.__module__ == cls.__module__
-                assert mcs.currently_registering.__qualname__ == cls.__qualname__
                 mcs.currently_registering = None
                 return cls
+
             else:
-                assert cls.__name__ in ["PyTreeDataclass", "MutablePyTreeDataclass"] or issubclass(
-                    cls, (PyTreeDataclass, MutablePyTreeDataclass)
-                )
+                if not (
+                    cls.__name__ in ["FrozenPyTreeDataclass", "MutablePyTreeDataclass"]
+                    or issubclass(cls, (FrozenPyTreeDataclass, MutablePyTreeDataclass))
+                ):
+                    raise TypeError(f"Dataclass {cls} should inherit from FrozenPyTreeDataclass or MutablePyTreeDataclass")
                 mcs.currently_registering = cls
         else:
             mcs.currently_registering = cls
 
         if name != "_PyTreeDataclassBase":
-            if name not in ["PyTreeDataclass", "MutablePyTreeDataclass"]:
-                frozen = issubclass(cls, PyTreeDataclass)
+            if name not in ["FrozenPyTreeDataclass", "MutablePyTreeDataclass"]:
+                frozen = issubclass(cls, FrozenPyTreeDataclass)
                 if frozen:
-                    assert not issubclass(cls, MutablePyTreeDataclass)
+                    if not (not issubclass(cls, MutablePyTreeDataclass) and issubclass(cls, FrozenPyTreeDataclass)):
+                        raise TypeError(f"Frozen dataclass {cls} should inherit from FrozenPyTreeDataclass")
                 else:
-                    assert issubclass(cls, MutablePyTreeDataclass)
+                    if not (issubclass(cls, MutablePyTreeDataclass) and not issubclass(cls, FrozenPyTreeDataclass)):
+                        raise TypeError(f"Mutable dataclass {cls} should inherit from MutablePyTreeDataclass")
             else:
                 frozen = kwargs.pop("frozen")
 
+            # Calling `dataclasses.dataclass` here, with slots, is what triggers the EARLY RETURN path above.
             cls = dataclasses.dataclass(frozen=frozen, slots=slots, **kwargs)(cls)
+
             assert issubclass(cls, CustomTreeNode)
             ot.register_pytree_node_class(cls, namespace=SB3_NAMESPACE)
         return cls
 
 
 class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
+    """
+    Provides utility methods common to both MutablePyTreeDataclass and FrozenPyTreeDataclass.
+
+    However _PyTreeDataclassBase is *not* a dataclass. as it hasn't been passed through the `dataclasses.dataclass(...)`
+    creation function.
+    """
+
     _names_cache: ClassVar[Optional[Tuple[str, ...]]] = None
 
     # Mark this class as a dataclass, for type checking purposes.
+    # Instead, it provides utility methods used by both Frozen and Mutable dataclasses.
     __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field[Any]]]
 
     @classmethod
@@ -117,7 +140,7 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
 
 
 @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-class PyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
+class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
     "Abstract class for immutable dataclass PyTrees"
     ...
 
@@ -140,7 +163,7 @@ TensorTree = Union[
     Dict[Any, th.Tensor],
     CustomTreeNode[th.Tensor],
     PyTree[th.Tensor],
-    PyTreeDataclass[th.Tensor],
+    FrozenPyTreeDataclass[th.Tensor],
     MutablePyTreeDataclass[th.Tensor],
 ]
 
