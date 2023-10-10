@@ -32,7 +32,6 @@ __all__ = [
     "tree_map",
 ]
 
-S = TypeVar("S")
 T = TypeVar("T")
 U = TypeVar("U")
 
