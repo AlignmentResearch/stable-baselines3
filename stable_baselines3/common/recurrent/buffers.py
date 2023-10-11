@@ -207,7 +207,6 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
     @property
     def rewards(self) -> th.Tensor:  # type: ignore[override]
-        assert self.data.rewards is not None, "RecurrentRolloutBufferData should store rewards"
         return self.data.rewards
 
     def reset(self):
@@ -237,8 +236,6 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         """
         :param hidden_states: Hidden state of the RNN
         """
-        if data.rewards is None:
-            raise ValueError("Recorded samples must contain a reward")
         new_data = dataclasses.replace(
             data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
         )
