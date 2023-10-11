@@ -19,6 +19,7 @@ from stable_baselines3.common.recurrent.type_aliases import (
 )
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env.util import as_torch_dtype
 
 
 def pad(
@@ -114,32 +115,13 @@ def space_to_example(
     device: Optional[th.device] = None,
     ensure_non_batch_dim: bool = False,
 ) -> TensorTree:
-    if isinstance(space, spaces.Dict):
-        return {
-            k: space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim)
-            for k, v in space.items()
-        }
-    if isinstance(space, spaces.Tuple):
-        return tuple(space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for v in space)
+    def _zeros_with_batch(x: np.ndarray) -> th.Tensor:
+        shape = x.shape
+        if ensure_non_batch_dim and len(shape) == 0:
+            shape = (1,)
+        return th.zeros((*batch_shape, *shape), device=device, dtype=as_torch_dtype(x.dtype))
 
-    if isinstance(space, spaces.Box):
-        space_shape = space.shape
-        space_dtype = th.float32
-    elif isinstance(space, spaces.Discrete):
-        space_shape = ()
-        space_dtype = th.long
-    elif isinstance(space, spaces.MultiDiscrete):
-        space_shape = (len(space.nvec),)
-        space_dtype = th.long
-    elif isinstance(space, spaces.MultiBinary):
-        space_shape = space.n if isinstance(space.n, tuple) else (space.n,)
-        space_dtype = th.float32
-    else:
-        raise TypeError(f"Unknown space type {type(space)} for {space}")
-
-    if ensure_non_batch_dim and not space_shape:
-        space_shape = (1,)
-    return th.zeros((*batch_shape, *space_shape), dtype=space_dtype, device=device)
+    return tree_map(_zeros_with_batch, space.sample())
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
