@@ -17,6 +17,7 @@ from stable_baselines3.common.recurrent.type_aliases import (
     RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
 )
+from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 
 
@@ -173,7 +174,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         self.gamma = gamma
 
         batch_shape = (self.buffer_size, self.n_envs)
-        device = self.device
+        self.device = device = get_device(device)
 
         self.observation_space_example = space_to_example((), observation_space)
 
