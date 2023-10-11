@@ -37,7 +37,7 @@ def test_dataclass_frozen_explicit(ParentPyTreeClass: type) -> None:
 
     with pytest.raises(TypeError, match="You should not specify frozen= for descendants"):
 
-        class D(ParentPyTreeClass, frozen=True):  # type: ignore
+        class D(ParentPyTreeClass, frozen=True):  # type: ignore  # noqa:F811
             a: int
 
 
@@ -53,17 +53,17 @@ def test_dataclass_must_be_descendant(frozen: bool) -> None:
 
     with pytest.raises(TypeError):
 
-        class D(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore
+        class D(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore  # noqa: F811
             pass
 
     with pytest.raises(TypeError, match="[^ ]* dataclass .* should inherit"):
 
-        class D(ptd._PyTreeDataclassBase):  # type: ignore
+        class D(ptd._PyTreeDataclassBase):  # type: ignore  # noqa: F811
             pass
 
     with pytest.raises(TypeError, match="[^ ]* dataclass .* should inherit"):
 
-        class D(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore
+        class D(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore  # noqa: F811
             pass
 
     # Then try to copy each of the reserved names:
@@ -96,17 +96,17 @@ def test_dataclass_must_be_descendant(frozen: bool) -> None:
 
     with pytest.raises(TypeError):
 
-        class FrozenPyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore
+        class FrozenPyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore  # noqa: F811
             pass
 
     with pytest.raises(TypeError, match="You cannot have another class named"):
 
-        class FrozenPyTreeDataclass(ptd._PyTreeDataclassBase):  # type: ignore
+        class FrozenPyTreeDataclass(ptd._PyTreeDataclassBase):  # type: ignore  # noqa: F811
             pass
 
     with pytest.raises(TypeError, match="You cannot have another class named"):
 
-        class FrozenPyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore
+        class FrozenPyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore  # noqa: F811
             pass
 
     ## MutablePyTreeDataclass
@@ -117,17 +117,17 @@ def test_dataclass_must_be_descendant(frozen: bool) -> None:
 
     with pytest.raises(TypeError):
 
-        class MutablePyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore
+        class MutablePyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta, frozen=frozen):  # type: ignore  # noqa:F811
             pass
 
     with pytest.raises(TypeError, match="You cannot have another class named"):
 
-        class MutablePyTreeDataclass(ptd._PyTreeDataclassBase):  # type: ignore
+        class MutablePyTreeDataclass(ptd._PyTreeDataclassBase):  # type: ignore  # noqa:F811
             pass
 
     with pytest.raises(TypeError, match="You cannot have another class named"):
 
-        class MutablePyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore
+        class MutablePyTreeDataclass(metaclass=ptd._PyTreeDataclassMeta):  # type: ignore  # noqa:F811
             pass
 
 
@@ -166,7 +166,7 @@ def test_tree_flatten() -> None:
     class A(ptd.FrozenPyTreeDataclass):
         a: Optional[int]
 
-    flat, _ = ptd.tree_flatten((A(3), A(None), {"a": A(4)}))
+    flat, _ = ptd.tree_flatten((A(3), A(None), {"a": A(4)}))  # type: ignore
     assert flat == [3, 4]
 
 
@@ -174,7 +174,8 @@ def test_tree_map() -> None:
     class A(ptd.FrozenPyTreeDataclass):
         a: Optional[int]
 
-    assert ptd.tree_map(lambda x: x * 2, ([2, 3], 4, A(5), None, {"a": 6})) == ([4, 6], 8, A(10), None, {"a": 12})  # type: ignore
+    out = ptd.tree_map(lambda x: x * 2, ([2, 3], 4, A(5), None, {"a": 6}))  # type: ignore
+    assert out == ([4, 6], 8, A(10), None, {"a": 12})
 
 
 def test_tree_empty() -> None:
