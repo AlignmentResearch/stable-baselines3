@@ -23,7 +23,7 @@ from stable_baselines3.common.type_aliases import TensorIndex
 from stable_baselines3.common.utils import zip_strict
 
 __all__ = [
-    "PyTreeDataclass",
+    "FrozenPyTreeDataclass",
     "MutablePyTreeDataclass",
     "TensorTree",
     "tree_empty",
@@ -32,11 +32,12 @@ __all__ = [
     "tree_map",
 ]
 
-S = TypeVar("S")
 T = TypeVar("T")
 U = TypeVar("U")
 
 SB3_NAMESPACE = "stable-baselines3"
+
+_RESERVED_NAMES = ["_PyTreeDataclassBase", "FrozenPyTreeDataclass", "MutablePyTreeDataclass"]
 
 
 # We need to inherit from `type(CustomTreeNode)` to prevent conflicts due to different-inheritance in metaclasses.
@@ -53,45 +54,83 @@ class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore[misc]
         ...
     """
 
+    # We need to have this `currently_registering` variable because, in the course of making a DataClass with __slots__,
+    # another class is created. So this will be called *twice* for every dataclass we annotate with this metaclass.
     currently_registering: ClassVar[Optional[type]] = None
 
     def __new__(mcs, name, bases, namespace, slots=True, **kwargs):
+        # First: create the class in the normal way.
         cls = super().__new__(mcs, name, bases, namespace)
 
         if dataclasses.is_dataclass(cls):
+            # If the class we're registering is already a Dataclass, it means it is a descendant of FrozenPyTreeDataclass or
+            # MutablePyTreeDataclass.
+            # This includes the children which are created when we create a dataclass with __slots__.
+
             if mcs.currently_registering is not None:
+                # We've already created and annotated a class without __slots__, now we create the one with __slots__
+                # that will actually get returned after from the __new__ method.
                 assert mcs.currently_registering.__module__ == cls.__module__
-                assert mcs.currently_registering.__qualname__ == cls.__qualname__
+                assert mcs.currently_registering.__name__ == cls.__name__
                 mcs.currently_registering = None
                 return cls
+
             else:
-                assert cls.__name__ in ["PyTreeDataclass", "MutablePyTreeDataclass"] or issubclass(
-                    cls, (PyTreeDataclass, MutablePyTreeDataclass)
+                assert name not in _RESERVED_NAMES, (
+                    f"Class with name {name}: classes {_RESERVED_NAMES} don't inherit from a dataclass, so they should "
+                    "not be in this branch."
                 )
+
+                # Otherwise we just mark the current class as what we're registering.
+                if not issubclass(cls, (FrozenPyTreeDataclass, MutablePyTreeDataclass)):
+                    raise TypeError(f"Dataclass {cls} should inherit from FrozenPyTreeDataclass or MutablePyTreeDataclass")
                 mcs.currently_registering = cls
         else:
             mcs.currently_registering = cls
 
-        if name != "_PyTreeDataclassBase":
-            if name not in ["PyTreeDataclass", "MutablePyTreeDataclass"]:
-                frozen = issubclass(cls, PyTreeDataclass)
-                if frozen:
-                    assert not issubclass(cls, MutablePyTreeDataclass)
-                else:
-                    assert issubclass(cls, MutablePyTreeDataclass)
-            else:
-                frozen = kwargs.pop("frozen")
+        if name in _RESERVED_NAMES:
+            if not (
+                namespace["__module__"] == "stable_baselines3.common.pytree_dataclass" and namespace["__qualname__"] == name
+            ):
+                raise TypeError(f"You cannot have another class named {name} with metaclass=_PyTreeDataclassMeta")
 
+            if name == "_PyTreeDataclassBase":
+                return cls
+            frozen = kwargs.pop("frozen")
+        else:
+            if "frozen" in kwargs:
+                raise TypeError(
+                    "You should not specify frozen= for descendants of FrozenPyTreeDataclass or MutablePyTreeDataclass"
+                )
+
+            frozen = issubclass(cls, FrozenPyTreeDataclass)
+            if frozen:
+                if not (not issubclass(cls, MutablePyTreeDataclass) and issubclass(cls, FrozenPyTreeDataclass)):
+                    raise TypeError(f"Frozen dataclass {cls} should inherit from FrozenPyTreeDataclass")
+            else:
+                if not (issubclass(cls, MutablePyTreeDataclass) and not issubclass(cls, FrozenPyTreeDataclass)):
+                    raise TypeError(f"Mutable dataclass {cls} should inherit from MutablePyTreeDataclass")
+
+            # Calling `dataclasses.dataclass` here, with slots, is what triggers the EARLY RETURN path above.
             cls = dataclasses.dataclass(frozen=frozen, slots=slots, **kwargs)(cls)
+
             assert issubclass(cls, CustomTreeNode)
             ot.register_pytree_node_class(cls, namespace=SB3_NAMESPACE)
         return cls
 
 
 class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
+    """
+    Provides utility methods common to both MutablePyTreeDataclass and FrozenPyTreeDataclass.
+
+    However _PyTreeDataclassBase is *not* a dataclass. as it hasn't been passed through the `dataclasses.dataclass(...)`
+    creation function.
+    """
+
     _names_cache: ClassVar[Optional[Tuple[str, ...]]] = None
 
     # Mark this class as a dataclass, for type checking purposes.
+    # Instead, it provides utility methods used by both Frozen and Mutable dataclasses.
     __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field[Any]]]
 
     @classmethod
@@ -118,7 +157,7 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
 
 
 @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-class PyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
+class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
     "Abstract class for immutable dataclass PyTrees"
     ...
 
@@ -141,7 +180,7 @@ TensorTree = Union[
     Dict[Any, th.Tensor],
     CustomTreeNode[th.Tensor],
     PyTree[th.Tensor],
-    PyTreeDataclass[th.Tensor],
+    FrozenPyTreeDataclass[th.Tensor],
     MutablePyTreeDataclass[th.Tensor],
 ]
 
@@ -151,7 +190,7 @@ ConcreteTensorTree = TypeVar("ConcreteTensorTree", bound=TensorTree)
 @overload
 def tree_flatten(
     tree: TensorTree,
-    is_leaf: Callable[[TensorTree], bool] | None,
+    is_leaf: Callable[[TensorTree], bool] | None = None,
     *,
     none_is_leaf: bool = False,
     namespace: str = SB3_NAMESPACE,
@@ -162,7 +201,7 @@ def tree_flatten(
 @overload
 def tree_flatten(
     tree: PyTree[T],
-    is_leaf: Callable[[T], bool] | None,
+    is_leaf: Callable[[T], bool] | None = None,
     *,
     none_is_leaf: bool = False,
     namespace: str = SB3_NAMESPACE,
@@ -210,14 +249,16 @@ def tree_map(func, tree, *rests, is_leaf=None, none_is_leaf=False, namespace=SB3
     return ot.tree_map(func, tree, *rests, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
 
 
-def tree_empty(tree: ot.PyTree, namespace: str = SB3_NAMESPACE) -> bool:
+def tree_empty(
+    tree: ot.PyTree, *, is_leaf: Callable[[T], bool] | None = None, none_is_leaf: bool = False, namespace: str = SB3_NAMESPACE
+) -> bool:
     """Is the tree `tree` empty, i.e. without leaves?
 
     :param tree: the tree to check
     :param namespace: when expanding nodes, use this namespace
     :return: True iff the tree is empty
     """
-    flattened_state, _ = ot.tree_flatten(tree, namespace=namespace)
+    flattened_state, _ = ot.tree_flatten(tree, is_leaf=is_leaf, none_is_leaf=none_is_leaf, namespace=namespace)
     return not bool(flattened_state)
 
 

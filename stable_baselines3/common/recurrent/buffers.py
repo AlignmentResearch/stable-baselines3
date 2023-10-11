@@ -17,6 +17,7 @@ from stable_baselines3.common.recurrent.type_aliases import (
     RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
 )
+from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 
 
@@ -113,32 +114,7 @@ def space_to_example(
     device: Optional[th.device] = None,
     ensure_non_batch_dim: bool = False,
 ) -> TensorTree:
-    if isinstance(space, spaces.Dict):
-        return {
-            k: space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim)
-            for k, v in space.items()
-        }
-    if isinstance(space, spaces.Tuple):
-        return tuple(space_to_example(batch_shape, v, device=device, ensure_non_batch_dim=ensure_non_batch_dim) for v in space)
-
-    if isinstance(space, spaces.Box):
-        space_shape = space.shape
-        space_dtype = th.float32
-    elif isinstance(space, spaces.Discrete):
-        space_shape = ()
-        space_dtype = th.long
-    elif isinstance(space, spaces.MultiDiscrete):
-        space_shape = (len(space.nvec),)
-        space_dtype = th.long
-    elif isinstance(space, spaces.MultiBinary):
-        space_shape = space.n if isinstance(space.n, tuple) else (space.n,)
-        space_dtype = th.float32
-    else:
-        raise TypeError(f"Unknown space type {type(space)} for {space}")
-
-    if ensure_non_batch_dim and not space_shape:
-        space_shape = (1,)
-    return th.zeros((*batch_shape, *space_shape), dtype=space_dtype, device=device)
+    return tree_map(lambda x: th.as_tensor(x).expand((*batch_shape, *x.shape)), space.sample())
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
@@ -173,7 +149,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         self.gamma = gamma
 
         batch_shape = (self.buffer_size, self.n_envs)
-        device = self.device
+        self.device = device = get_device(device)
 
         self.observation_space_example = space_to_example((), observation_space)
 
@@ -207,7 +183,6 @@ class RecurrentRolloutBuffer(RolloutBuffer):
 
     @property
     def rewards(self) -> th.Tensor:  # type: ignore[override]
-        assert self.data.rewards is not None, "RecurrentRolloutBufferData should store rewards"
         return self.data.rewards
 
     def reset(self):
@@ -237,8 +212,6 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         """
         :param hidden_states: Hidden state of the RNN
         """
-        if data.rewards is None:
-            raise ValueError("Recorded samples must contain a reward")
         new_data = dataclasses.replace(
             data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
         )

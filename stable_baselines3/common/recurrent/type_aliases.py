@@ -2,7 +2,7 @@ from typing import Optional, Tuple, TypeVar
 
 import torch as th
 
-from stable_baselines3.common.pytree_dataclass import PyTreeDataclass, TensorTree
+from stable_baselines3.common.pytree_dataclass import FrozenPyTreeDataclass, TensorTree
 
 T = TypeVar("T")
 
@@ -16,12 +16,12 @@ def non_null(v: Optional[T]) -> T:
 LSTMStates = Tuple[th.Tensor, th.Tensor]
 
 
-class RNNStates(PyTreeDataclass[th.Tensor]):
+class RNNStates(FrozenPyTreeDataclass[th.Tensor]):
     pi: LSTMStates
     vf: LSTMStates
 
 
-class RecurrentRolloutBufferData(PyTreeDataclass[th.Tensor]):
+class RecurrentRolloutBufferData(FrozenPyTreeDataclass[th.Tensor]):
     observations: TensorTree
     actions: th.Tensor
     rewards: th.Tensor
@@ -31,7 +31,7 @@ class RecurrentRolloutBufferData(PyTreeDataclass[th.Tensor]):
     hidden_states: TensorTree
 
 
-class RecurrentRolloutBufferSamples(PyTreeDataclass[th.Tensor]):
+class RecurrentRolloutBufferSamples(FrozenPyTreeDataclass[th.Tensor]):
     observations: TensorTree
     actions: th.Tensor
     old_values: th.Tensor

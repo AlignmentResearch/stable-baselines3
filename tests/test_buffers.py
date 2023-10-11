@@ -121,6 +121,9 @@ def test_replay_buffer_normalization(replay_buffer_cls):
     assert np.allclose(sample.rewards.mean(0), np.zeros(1), atol=1)
 
 
+HIDDEN_STATES_EXAMPLE = {"a": {"b": th.zeros(2, 4)}}
+
+
 @pytest.mark.parametrize(
     "replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, RecurrentRolloutBuffer]
 )
@@ -139,12 +142,14 @@ def test_device_buffer(replay_buffer_cls, device):
     env = make_vec_env(env)
 
     if replay_buffer_cls == RecurrentRolloutBuffer:
-        hidden_states = {"a": {"b": th.zeros(2, 4)}}
         buffer = RecurrentRolloutBuffer(
-            EP_LENGTH, env.observation_space, env.action_space, hidden_state_example=hidden_states, device=device
+            EP_LENGTH, env.observation_space, env.action_space, hidden_state_example=HIDDEN_STATES_EXAMPLE, device=device
         )
     else:
         buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device)
+
+    hidden_states_shape = HIDDEN_STATES_EXAMPLE["a"]["b"].shape
+    N_ENVS_HIDDEN_STATES = {"a": {"b": th.zeros((hidden_states_shape[0], env.num_envs, *hidden_states_shape[1:]))}}
 
     # Interract and store transitions
     obs = env.reset()
@@ -157,8 +162,7 @@ def test_device_buffer(replay_buffer_cls, device):
             buffer.add(obs, action, reward, episode_start, values, log_prob)
         elif replay_buffer_cls == RecurrentRolloutBuffer:
             episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
-            hidden_states = {"a": {"b": th.zeros(2, buffer.n_envs, 4)}}
-            buffer.add(RecurrentRolloutBufferData(obs, action, reward, episode_start, values, log_prob, hidden_states))
+            buffer.add(RecurrentRolloutBufferData(obs, action, reward, episode_start, values, log_prob, N_ENVS_HIDDEN_STATES))
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
