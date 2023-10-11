@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, TypeVar
+from typing import Generic, Optional, Tuple, TypeVar
 
 import torch as th
 
@@ -13,12 +13,16 @@ def non_null(v: Optional[T]) -> T:
     return v
 
 
-LSTMStates = Tuple[th.Tensor, th.Tensor]
+TensorTreeT = TypeVar("TensorTreeT", bound=TensorTree)
 
 
-class RNNStates(FrozenPyTreeDataclass[th.Tensor]):
-    pi: LSTMStates
-    vf: LSTMStates
+LSTMRecurrentState = Tuple[th.Tensor, th.Tensor]
+GRURecurrentState = th.Tensor
+
+
+class ActorCriticStates(FrozenPyTreeDataclass[th.Tensor], Generic[TensorTreeT]):
+    pi: TensorTreeT
+    vf: TensorTreeT
 
 
 class RecurrentRolloutBufferData(FrozenPyTreeDataclass[th.Tensor]):

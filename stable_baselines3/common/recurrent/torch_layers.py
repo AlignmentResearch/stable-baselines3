@@ -1,10 +1,15 @@
 import abc
-from typing import Generic, Optional, Tuple, TypeVar
+from typing import Any, Dict, Generic, Optional, Tuple, TypeVar
 
 import gymnasium as gym
 import torch as th
 
+from stable_baselines3.common.preprocessing import get_flattened_obs_dim
 from stable_baselines3.common.pytree_dataclass import TensorTree, tree_flatten, tree_map
+from stable_baselines3.common.recurrent.type_aliases import (
+    GRURecurrentState,
+    LSTMRecurrentState,
+)
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
@@ -17,8 +22,10 @@ RecurrentState = TypeVar("RecurrentState", bound=TensorTree)
 
 RecurrentSubState = TypeVar("RecurrentSubState", bound=TensorTree)
 
+ExtractorInput = TypeVar("ExtractorInput", bound=TorchGymObs)
 
-class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[RecurrentState]):
+
+class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[ExtractorInput, RecurrentState]):
     @abc.abstractmethod
     def recurrent_initial_state(
         self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None
@@ -27,7 +34,7 @@ class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[Recurre
 
     @abc.abstractmethod
     def forward(
-        self, observations: TorchGymObs, state: RecurrentState, episode_starts: th.Tensor
+        self, observations: ExtractorInput, state: RecurrentState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, RecurrentState]:
         ...
 
@@ -57,10 +64,7 @@ class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[Recurre
         return rnn_output, end_state
 
 
-GRURecurrentState = th.Tensor
-
-
-class GRUWrappedFeaturesExtractor(RecurrentFeaturesExtractor[GRURecurrentState]):
+class GRUWrappedFeaturesExtractor(RecurrentFeaturesExtractor[ExtractorInput, GRURecurrentState], Generic[ExtractorInput]):
     def __init__(
         self,
         observation_space: gym.Space,
@@ -100,7 +104,7 @@ class GRUWrappedFeaturesExtractor(RecurrentFeaturesExtractor[GRURecurrentState])
         return th.zeros(shape, device=device)
 
     def forward(
-        self, observations: TorchGymObs, state: GRURecurrentState, episode_starts: th.Tensor
+        self, observations: ExtractorInput, state: GRURecurrentState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, GRURecurrentState]:
         features: th.Tensor = self.base_extractor(observations)
         return self._process_sequence(self.rnn, features, state, episode_starts)
@@ -110,7 +114,7 @@ class GRUWrappedFeaturesExtractor(RecurrentFeaturesExtractor[GRURecurrentState])
         return self.rnn.hidden_size
 
 
-class GRUFlattenExtractor(GRUWrappedFeaturesExtractor):
+class GRUFlattenExtractor(GRUWrappedFeaturesExtractor[th.Tensor]):
     def __init__(
         self,
         observation_space: gym.Space,
@@ -125,7 +129,7 @@ class GRUFlattenExtractor(GRUWrappedFeaturesExtractor):
         )
 
 
-class GRUNatureCNNExtractor(GRUWrappedFeaturesExtractor):
+class GRUNatureCNNExtractor(GRUWrappedFeaturesExtractor[th.Tensor]):
     def __init__(
         self,
         observation_space: gym.Space,
@@ -141,7 +145,7 @@ class GRUNatureCNNExtractor(GRUWrappedFeaturesExtractor):
         )
 
 
-class GRUCombinedExtractor(GRUWrappedFeaturesExtractor):
+class GRUCombinedExtractor(GRUWrappedFeaturesExtractor[Dict[Any, th.Tensor]]):
     def __init__(
         self,
         observation_space: gym.spaces.Dict,
@@ -156,3 +160,46 @@ class GRUCombinedExtractor(GRUWrappedFeaturesExtractor):
         super().__init__(
             observation_space, base_extractor, features_dim=features_dim, num_layers=num_layers, bias=bias, dropout=dropout
         )
+
+
+class LSTMFlattenExtractor(RecurrentFeaturesExtractor[th.Tensor, LSTMRecurrentState]):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        features_dim: int = 64,
+        num_layers: int = 1,
+        bias: bool = True,
+        dropout: float = 0.0,
+    ):
+        super().__init__(observation_space, features_dim)
+
+        self.rnn = th.nn.LSTM(
+            input_size=get_flattened_obs_dim(self._observation_space),
+            hidden_size=features_dim,
+            num_layers=num_layers,
+            bias=bias,
+            batch_first=False,
+            dropout=dropout,
+            bidirectional=False,
+        )
+        self.base_extractor = FlattenExtractor(observation_space)
+
+    def recurrent_initial_state(
+        self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None
+    ) -> LSTMRecurrentState:
+        shape: Tuple[int, ...]
+        if n_envs is None:
+            shape = (self.rnn.num_layers, self.rnn.hidden_size)
+        else:
+            shape = (self.rnn.num_layers, n_envs, self.rnn.hidden_size)
+        return (th.zeros(shape, device=device), th.zeros(shape, device=device))
+
+    def forward(
+        self, observations: th.Tensor, state: LSTMRecurrentState, episode_starts: th.Tensor
+    ) -> Tuple[th.Tensor, LSTMRecurrentState]:
+        features: th.Tensor = self.base_extractor(observations)
+        return self._process_sequence(self.rnn, features, state, episode_starts)
+
+    @property
+    def features_dim(self) -> int:
+        return self.rnn.hidden_size
