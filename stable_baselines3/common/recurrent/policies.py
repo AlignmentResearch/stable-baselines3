@@ -344,8 +344,8 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
 
     # Methods for getting `latent_vf` or `latent_pi`
     def _recurrent_latent_pi_and_vf(
-        self, obs: TorchGymObs, state: ActorCriticStates, episode_starts: th.Tensor
-    ) -> Tuple[Tuple[th.Tensor, th.Tensor], ActorCriticStates]:
+        self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
+    ) -> Tuple[Tuple[th.Tensor, th.Tensor], ActorCriticStates[LSTMRecurrentState]]:
         features = self.extract_features(obs)
         pi_features: th.Tensor
         vf_features: th.Tensor
@@ -355,38 +355,40 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         else:
             assert isinstance(features, tuple)
             pi_features, vf_features = features
-        latent_pi, lstm_states_pi = self._process_sequence(pi_features, state.pi, episode_starts, self.lstm_actor)
+        latent_pi, lstm_states_pi = self.lstm_actor.forward(pi_features, state.pi, episode_starts)
         latent_vf, lstm_states_vf = self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)
         if lstm_states_vf is None:
             lstm_states_vf = (lstm_states_pi[0].detach(), lstm_states_pi[1].detach())
         return ((latent_pi, latent_vf), ActorCriticStates(lstm_states_pi, lstm_states_vf))
 
     def _recurrent_latent_vf_from_features(
-        self, vf_features: th.Tensor, state: ActorCriticStates, episode_starts: th.Tensor
+        self, vf_features: th.Tensor, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, Optional[LSTMRecurrentState]]:
         "Get only the vf features, not advancing the hidden state"
         if self.lstm_critic is None:
             if self.shared_lstm:
                 with th.no_grad():
-                    latent_vf, _ = self._process_sequence(vf_features, state.pi, episode_starts, self.lstm_actor)
+                    latent_vf, _ = self.lstm_actor.forward(vf_features, state.pi, episode_starts)
             else:
                 latent_vf = non_null(self.critic)(vf_features)
             state_vf = None
         else:
-            latent_vf, state_vf = self._process_sequence(vf_features, state.vf, episode_starts, self.lstm_critic)
+            latent_vf, state_vf = self.lstm_critic(vf_features, state.vf, episode_starts)
         return latent_vf, state_vf
 
-    def _recurrent_latent_vf_nostate(self, obs: TorchGymObs, state: ActorCriticStates, episode_starts: th.Tensor) -> th.Tensor:
+    def _recurrent_latent_vf_nostate(
+        self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
+    ) -> th.Tensor:
         vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
         return self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)[0]
 
     def forward(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        state: ActorCriticStates,
+        state: ActorCriticStates[LSTMRecurrentState],
         episode_starts: th.Tensor,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, ActorCriticStates]:
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, ActorCriticStates[LSTMRecurrentState]]:
         (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
@@ -401,9 +403,9 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def get_distribution(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        state: ActorCriticStates,
+        state: ActorCriticStates[LSTMRecurrentState],
         episode_starts: th.Tensor,
-    ) -> Tuple[Distribution, ActorCriticStates]:
+    ) -> Tuple[Distribution, ActorCriticStates[LSTMRecurrentState]]:
         (latent_pi, _), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         return self._get_action_dist_from_latent(latent_pi), state
@@ -411,7 +413,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def predict_values(  # type: ignore[override]
         self,
         obs: TorchGymObs,
-        state: ActorCriticStates,
+        state: ActorCriticStates[LSTMRecurrentState],
         episode_starts: th.Tensor,
     ) -> th.Tensor:
         latent_vf = self._recurrent_latent_vf_nostate(obs, state, episode_starts)
@@ -419,7 +421,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         return self.value_net(latent_vf)
 
     def evaluate_actions(  # type: ignore[override]
-        self, obs: TorchGymObs, actions: th.Tensor, state: ActorCriticStates, episode_starts: th.Tensor
+        self, obs: TorchGymObs, actions: th.Tensor, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
@@ -433,10 +435,10 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def _predict(  # type: ignore[override]
         self,
         observation: TorchGymObs,
-        state: ActorCriticStates,
+        state: ActorCriticStates[LSTMRecurrentState],
         episode_starts: th.Tensor,
         deterministic: bool = False,
-    ) -> Tuple[th.Tensor, ActorCriticStates]:
+    ) -> Tuple[th.Tensor, ActorCriticStates[LSTMRecurrentState]]:
         distribution, state = self.get_distribution(observation, state, episode_starts)
         return distribution.get_actions(deterministic=deterministic), state
 
