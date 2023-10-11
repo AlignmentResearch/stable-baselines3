@@ -19,6 +19,7 @@ from stable_baselines3.common.recurrent.type_aliases import (
 )
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env.util import as_torch_dtype
 
 
 def pad(
@@ -114,7 +115,13 @@ def space_to_example(
     device: Optional[th.device] = None,
     ensure_non_batch_dim: bool = False,
 ) -> TensorTree:
-    return tree_map(lambda x: th.as_tensor(x).expand((*batch_shape, *x.shape)), space.sample())
+    def _zeros_with_batch(x: np.ndarray) -> th.Tensor:
+        shape = x.shape
+        if ensure_non_batch_dim and len(shape) == 0:
+            shape = (1,)
+        return th.zeros((*batch_shape, *shape), device=device, dtype=as_torch_dtype(x.dtype))
+
+    return tree_map(_zeros_with_batch, space.sample())
 
 
 class RecurrentRolloutBuffer(RolloutBuffer):
