@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+import abc
+from typing import Any, Dict, Generic, List, Optional, Tuple, Type, Union
 
 import torch as th
 from gymnasium import spaces
@@ -6,7 +7,14 @@ from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
 from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.preprocessing import preprocess_obs
 from stable_baselines3.common.pytree_dataclass import tree_flatten
+from stable_baselines3.common.recurrent.torch_layers import (
+    GRUNatureCNNExtractor,
+    GRUWrappedFeaturesExtractor,
+    RecurrentFeaturesExtractor,
+    RecurrentState,
+)
 from stable_baselines3.common.recurrent.type_aliases import (
     LSTMStates,
     RNNStates,
@@ -23,7 +31,164 @@ from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
 from stable_baselines3.common.utils import zip_strict
 
 
-class RecurrentActorCriticPolicy(ActorCriticPolicy):
+class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState]):
+    @abc.abstractmethod
+    def recurrent_initial_state(
+        self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None
+    ) -> RecurrentState:
+        ...
+
+    @abc.abstractmethod
+    def forward(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+        deterministic: bool = False,
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RecurrentState]:
+        """Advances to the next hidden state, and computes all the outputs of a recurrent policy.
+
+        In this docstring the dimension letters are: Time (T), Batch (B) and others (...).
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :param deterministic: if True return the best action, else a sample.
+        :returns: (actions, values, log_prob, state). The actions, values and log-action-probabilities for every time
+            step T, and the final state.
+        """
+        ...
+
+    @abc.abstractmethod
+    def get_distribution(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+    ) -> Tuple[Distribution, RecurrentState]:
+        """
+        Get the policy distribution for each step given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: the action distribution, the new hidden states.
+        """
+        ...
+
+    @abc.abstractmethod
+    def predict_values(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+    ) -> th.Tensor:
+        """
+        Get the estimated values according to the current policy given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: The value for each time step.
+        """
+        ...
+
+    @abc.abstractmethod
+    def evaluate_actions(  # type: ignore[override]
+        self, obs: TorchGymObs, actions: th.Tensor, state: RecurrentState, episode_starts: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+        """
+        Evaluate actions according to the current policy,
+        given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param actions: The actions taken at each step.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: estimated value, log likelihood of taking those actions
+            and entropy of the action distribution.
+        """
+        ...
+
+    @abc.abstractmethod
+    def _predict(  # type: ignore[override]
+        self,
+        observation: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+        deterministic: bool = False,
+    ) -> Tuple[th.Tensor, RecurrentState]:
+        """
+        Get the action according to the policy for a given observation.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :param deterministic: if True return the best action, else a sample.
+        :return: the model's action and the next hidden state
+        """
+        ...
+
+    def predict(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: Optional[RecurrentState] = None,
+        episode_start: Optional[th.Tensor] = None,
+        deterministic: bool = False,
+    ) -> Tuple[th.Tensor, Optional[RecurrentState]]:
+        """
+        Get the policy action from an observation (and optional hidden state).
+        Includes sugar-coating to handle different observations (e.g. normalizing images).
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :param deterministic: if True return the best action, else a sample.
+        :return: the model's action and the next hidden state
+        """
+        # Switch to eval mode (this affects batch norm / dropout)
+        self.set_training_mode(False)
+
+        obs, vectorized_env = self.obs_to_tensor(obs)
+        one_obs_tensor: th.Tensor
+        (one_obs_tensor, *_), _ = tree_flatten(obs)  # type: ignore
+        n_envs = len(one_obs_tensor)
+
+        if state is None:
+            state = self.recurrent_initial_state(n_envs, device=self.device)
+
+        if episode_start is None:
+            episode_start = th.zeros(n_envs, dtype=th.bool)
+
+        with th.no_grad():
+            # Convert to PyTorch tensors
+            actions, state = self._predict(obs, state=state, episode_starts=episode_start, deterministic=deterministic)
+
+        if isinstance(self.action_space, spaces.Box):
+            if callable(self.squash_output):
+                # Rescale to proper domain when using squashing
+                actions = self.unscale_action(actions)
+            else:
+                # Actions could be on arbitrary scale, so clip the actions to avoid
+                # out of bound error (e.g. if sampling from a Gaussian distribution)
+                actions = th.clip(
+                    actions, th.as_tensor(self.action_space.low).to(actions), th.as_tensor(self.action_space.high).to(actions)
+                )
+
+        # Remove batch dimension if needed
+        if not vectorized_env:
+            actions = actions.squeeze(dim=0)
+
+        return actions, state
+
+
+class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     """
     Recurrent policy class for actor-critic algorithms (has both policy and value prediction).
     To be used with A2C, PPO and the likes.
@@ -172,16 +337,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         episode_starts: th.Tensor,
         lstm: nn.LSTM,
     ) -> Tuple[th.Tensor, LSTMStates]:
-        """
-        Do a forward pass in the LSTM network.
-
-        :param features: Input tensor
-        :param lstm_states: previous cell and hidden states of the LSTM
-        :param episode_starts: Indicates when a new episode starts,
-            in that case, we need to reset LSTM states.
-        :param lstm: LSTM object.
-        :return: LSTM output and updated LSTM states.
-        """
         # LSTM logic
         # (sequence length, batch size, features dim)
         # (batch size = n_envs for data collection or n_seq when doing gradient update)
@@ -277,16 +432,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         episode_starts: th.Tensor,
         deterministic: bool = False,
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RNNStates]:
-        """
-        Forward pass in all the networks (actor and critic)
-
-        :param obs: Observation. Observation
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :param deterministic: Whether to sample or use deterministic actions
-        :return: action, value and log probability of the action
-        """
         (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
@@ -304,16 +449,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         state: RNNStates,
         episode_starts: th.Tensor,
     ) -> Tuple[Distribution, RNNStates]:
-        """
-        Get the current policy distribution given the observations.
-
-        :param obs: Observation.
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :return: the action distribution and new hidden states.
-        """
-        # Call the method from the parent of the parent class
         (latent_pi, _), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         return self._get_action_dist_from_latent(latent_pi), state
@@ -324,15 +459,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         state: RNNStates,
         episode_starts: th.Tensor,
     ) -> th.Tensor:
-        """
-        Get the estimated values according to the current policy given the observations.
-
-        :param obs: Observation.
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :return: the estimated values.
-        """
         latent_vf = self._recurrent_latent_vf_nostate(obs, state, episode_starts)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
         return self.value_net(latent_vf)
@@ -340,19 +466,6 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
     def evaluate_actions(  # type: ignore[override]
         self, obs: TorchGymObs, actions: th.Tensor, state: RNNStates, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
-        """
-        Evaluate actions according to the current policy,
-        given the observations.
-
-        :param obs: Observation.
-        :param actions:
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :return: estimated value, log likelihood of taking those actions
-            and entropy of the action distribution.
-        """
-        # Preprocess the observation if needed
         (latent_pi, latent_vf), state = self._recurrent_latent_pi_and_vf(obs, state, episode_starts)
         latent_pi = self.mlp_extractor.forward_actor(latent_pi)
         latent_vf = self.mlp_extractor.forward_critic(latent_vf)
@@ -369,72 +482,8 @@ class RecurrentActorCriticPolicy(ActorCriticPolicy):
         episode_starts: th.Tensor,
         deterministic: bool = False,
     ) -> Tuple[th.Tensor, RNNStates]:
-        """
-        Get the action according to the policy for a given observation.
-
-        :param observation:
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :param deterministic: Whether to use stochastic or deterministic actions
-        :return: Taken action according to the policy and hidden states of the RNN
-        """
         distribution, state = self.get_distribution(observation, state, episode_starts)
         return distribution.get_actions(deterministic=deterministic), state
-
-    def predict(  # type: ignore[override]
-        self,
-        observation: TorchGymObs,
-        state: Optional[RNNStates] = None,
-        episode_start: Optional[th.Tensor] = None,
-        deterministic: bool = False,
-    ) -> Tuple[th.Tensor, Optional[RNNStates]]:
-        """
-        Get the policy action from an observation (and optional hidden state).
-        Includes sugar-coating to handle different observations (e.g. normalizing images).
-
-        :param observation: the input observation
-        :param state: The last hidden and memory states for the LSTM.
-        :param episode_starts: Whether the observations correspond to new episodes
-            or not (we reset the lstm states in that case).
-        :param deterministic: Whether or not to return deterministic actions.
-        :return: the model's action and the next hidden state
-            (used in recurrent policies)
-        """
-        # Switch to eval mode (this affects batch norm / dropout)
-        self.set_training_mode(False)
-
-        observation, vectorized_env = self.obs_to_tensor(observation)
-        one_obs_tensor: th.Tensor
-        (one_obs_tensor, *_), _ = tree_flatten(observation)  # type: ignore
-        n_envs = len(one_obs_tensor)
-
-        if state is None:
-            state = self.recurrent_initial_state(n_envs)
-
-        if episode_start is None:
-            episode_start = th.zeros(n_envs, dtype=th.bool)
-
-        with th.no_grad():
-            # Convert to PyTorch tensors
-            actions, state = self._predict(observation, state=state, episode_starts=episode_start, deterministic=deterministic)
-
-        if isinstance(self.action_space, spaces.Box):
-            if self.squash_output:
-                # Rescale to proper domain when using squashing
-                actions = self.unscale_action(actions)
-            else:
-                # Actions could be on arbitrary scale, so clip the actions to avoid
-                # out of bound error (e.g. if sampling from a Gaussian distribution)
-                actions = th.clip(
-                    actions, th.as_tensor(self.action_space.low).to(actions), th.as_tensor(self.action_space.high).to(actions)
-                )
-
-        # Remove batch dimension if needed
-        if not vectorized_env:
-            actions = actions.squeeze(dim=0)
-
-        return actions, state
 
 
 class RecurrentActorCriticCnnPolicy(RecurrentActorCriticPolicy):
@@ -615,3 +664,191 @@ class RecurrentMultiInputActorCriticPolicy(RecurrentActorCriticPolicy):
             enable_critic_lstm,
             lstm_kwargs,
         )
+
+
+class RecurrentFeaturesExtractorActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState]):
+    features_extractor: RecurrentFeaturesExtractor[RecurrentState]
+
+    def __init__(
+        self,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        lr_schedule: Schedule,
+        net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
+        activation_fn: Type[nn.Module] = nn.Tanh,
+        ortho_init: bool = True,
+        use_sde: bool = False,
+        log_std_init: float = 0.0,
+        full_std: bool = True,
+        use_expln: bool = False,
+        squash_output: bool = False,
+        features_extractor_class: Type[BaseFeaturesExtractor] = GRUNatureCNNExtractor,
+        features_extractor_kwargs: Optional[Dict[str, Any]] = None,
+        share_features_extractor: bool = True,
+        normalize_images: bool = True,
+        optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+    ):
+        if features_extractor_kwargs is None:
+            features_extractor_kwargs = {}
+        # Automatically deactivate dtype and bounds checks
+        if normalize_images is False and issubclass(features_extractor_class, GRUNatureCNNExtractor):
+            features_extractor_kwargs = features_extractor_kwargs.copy()
+            features_extractor_kwargs.update(dict(normalized_image=True))
+
+        if not issubclass(features_extractor_class, RecurrentFeaturesExtractor):
+            base_features_extractor = features_extractor_class(observation_space, **features_extractor_kwargs)
+
+            features_extractor_class = GRUWrappedFeaturesExtractor
+            new_features_extractor_kwargs = dict(base_extractor=base_features_extractor)
+            if "features_dim" in features_extractor_kwargs:
+                new_features_extractor_kwargs["features_dim"] = features_extractor_kwargs["features_dim"]
+            features_extractor_kwargs = new_features_extractor_kwargs
+            print(features_extractor_class, features_extractor_kwargs)
+
+        super().__init__(
+            observation_space,
+            action_space,
+            lr_schedule,
+            net_arch,
+            activation_fn,
+            ortho_init,
+            use_sde,
+            log_std_init,
+            full_std,
+            use_expln,
+            squash_output,
+            features_extractor_class,
+            features_extractor_kwargs,
+            share_features_extractor,
+            normalize_images,
+            optimizer_class,
+            optimizer_kwargs,
+        )
+
+    def recurrent_initial_state(
+        self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None
+    ) -> RecurrentState:
+        return self.features_extractor.recurrent_initial_state(n_envs, device=device)
+
+    def _recurrent_extract_features(
+        self, obs: TorchGymObs, state: RecurrentState, episode_starts: th.Tensor
+    ) -> Tuple[th.Tensor, RecurrentState]:
+        if not self.share_features_extractor:
+            raise NotImplementedError("Non-shared features extractor not supported for recurrent extractors")
+
+        preprocessed_obs = preprocess_obs(obs, self.observation_space, normalize_images=self.normalize_images)  # type: ignore
+        return self.features_extractor(preprocessed_obs, state, episode_starts)
+
+    def forward(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+        deterministic: bool = False,
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor, RecurrentState]:
+        """Advances to the next hidden state, and computes all the outputs of a recurrent policy.
+
+        In this docstring the dimension letters are: Time (T), Batch (B) and others (...).
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :param deterministic: if True return the best action, else a sample.
+        :returns: (actions, values, log_prob, state). The actions, values and log-action-probabilities for every time
+            step T, and the final state.
+        """
+        latents, state = self._recurrent_extract_features(obs, state, episode_starts)
+        latent_pi = self.mlp_extractor.forward_actor(latents)
+        latent_vf = self.mlp_extractor.forward_critic(latents)
+
+        # Evaluate the values for the given observations
+        values = self.value_net(latent_vf)
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        actions = distribution.get_actions(deterministic=deterministic)
+        log_prob = distribution.log_prob(actions)
+        return actions, values, log_prob, state
+
+    def get_distribution(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+    ) -> Tuple[Distribution, RecurrentState]:
+        """
+        Get the policy distribution for each step given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: the action distribution, the new hidden states.
+        """
+        latent_pi, state = self._recurrent_extract_features(obs, state, episode_starts)
+        latent_pi = self.mlp_extractor.forward_actor(latent_pi)
+        return self._get_action_dist_from_latent(latent_pi), state
+
+    def predict_values(  # type: ignore[override]
+        self,
+        obs: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+    ) -> th.Tensor:
+        """
+        Get the estimated values according to the current policy given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: The value for each time step.
+        """
+        latent_vf, _ = self._recurrent_extract_features(obs, state, episode_starts)
+        latent_vf = self.mlp_extractor.forward_critic(latent_vf)
+        return self.value_net(latent_vf)
+
+    def evaluate_actions(  # type: ignore[override]
+        self, obs: TorchGymObs, actions: th.Tensor, state: RecurrentState, episode_starts: th.Tensor
+    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+        """
+        Evaluate actions according to the current policy,
+        given the observations.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param actions: The actions taken at each step.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :return: estimated value, log likelihood of taking those actions
+            and entropy of the action distribution.
+        """
+        # Preprocess the observation if needed
+        latents, state = self._recurrent_extract_features(obs, state, episode_starts)
+        latent_pi = self.mlp_extractor.forward_actor(latents)
+        latent_vf = self.mlp_extractor.forward_critic(latents)
+
+        distribution = self._get_action_dist_from_latent(latent_pi)
+        log_prob = distribution.log_prob(actions)
+        values = self.value_net(latent_vf)
+        return values, log_prob, non_null(distribution.entropy())
+
+    def _predict(  # type: ignore[override]
+        self,
+        observation: TorchGymObs,
+        state: RecurrentState,
+        episode_starts: th.Tensor,
+        deterministic: bool = False,
+    ) -> Tuple[th.Tensor, RecurrentState]:
+        """
+        Get the action according to the policy for a given observation.
+
+        :param obs: shape (T, B, ...) the policy will be applied in sequence to all the observations.
+        :param state: shape (B, ...), the hidden state of the recurrent network
+        :param episode_starts: shape (T, B), whether the current state is the start of an episode. This should be be 0
+            everywhere except for T=0, where it may be 1.
+        :param deterministic: if True return the best action, else a sample.
+        :return: the model's action and the next hidden state
+        """
+        distribution, state = self.get_distribution(observation, state, episode_starts)
+        return distribution.get_actions(deterministic=deterministic), state
