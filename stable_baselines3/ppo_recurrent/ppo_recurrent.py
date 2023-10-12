@@ -16,9 +16,13 @@ from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPoli
 from stable_baselines3.common.recurrent.type_aliases import (
     ActorCriticStates,
     RecurrentRolloutBufferData,
+)
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    Schedule,
     non_null,
 )
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
     get_schedule_fn,

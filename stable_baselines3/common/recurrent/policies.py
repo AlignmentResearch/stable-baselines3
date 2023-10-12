@@ -20,7 +20,6 @@ from stable_baselines3.common.recurrent.torch_layers import (
 from stable_baselines3.common.recurrent.type_aliases import (
     ActorCriticStates,
     LSTMRecurrentState,
-    non_null,
 )
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
@@ -29,7 +28,7 @@ from stable_baselines3.common.torch_layers import (
     MlpExtractor,
     NatureCNN,
 )
-from stable_baselines3.common.type_aliases import Schedule, TorchGymObs
+from stable_baselines3.common.type_aliases import Schedule, TorchGymObs, non_null
 
 
 class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState]):
