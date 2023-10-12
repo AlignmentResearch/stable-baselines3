@@ -13,6 +13,15 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.envs import FakeImageEnv
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.recurrent.policies import (
+    BaseRecurrentActorCriticPolicy,
+    RecurrentFeaturesExtractorActorCriticPolicy,
+)
+from stable_baselines3.common.recurrent.torch_layers import (
+    GRUCombinedExtractor,
+    GRUFlattenExtractor,
+    GRUNatureCNNExtractor,
+)
 from stable_baselines3.common.vec_env import VecNormalize
 
 
@@ -102,6 +111,19 @@ def test_cnn(policy_kwargs):
     model.learn(total_timesteps=32)
 
 
+def test_cnn_recurrent_extractor():
+    model = RecurrentPPO(
+        RecurrentFeaturesExtractorActorCriticPolicy,
+        FakeImageEnv(screen_height=40, screen_width=40, n_channels=3),
+        n_steps=16,
+        seed=0,
+        policy_kwargs=dict(features_extractor_class=GRUNatureCNNExtractor, features_extractor_kwargs=dict(features_dim=32)),
+        n_epochs=2,
+    )
+
+    model.learn(total_timesteps=32)
+
+
 @pytest.mark.parametrize(
     "policy_kwargs",
     [
@@ -181,6 +203,20 @@ def test_run_sde():
     model.learn(total_timesteps=200)
 
 
+def test_run_sde_recurrent_extractor():
+    model = RecurrentPPO(
+        RecurrentFeaturesExtractorActorCriticPolicy,
+        "Pendulum-v1",
+        n_steps=16,
+        seed=0,
+        sde_sample_freq=4,
+        use_sde=True,
+        clip_range_vf=0.1,
+        policy_kwargs=dict(features_extractor_class=GRUFlattenExtractor),
+    )
+    model.learn(total_timesteps=200)
+
+
 @pytest.mark.parametrize(
     "policy_kwargs",
     [
@@ -206,8 +242,16 @@ def test_dict_obs(policy_kwargs):
     evaluate_policy(model, env, warn=False)
 
 
+def test_dict_obs_recurrent_extractor():
+    policy_kwargs = dict(features_extractor_class=GRUCombinedExtractor)
+    env = make_vec_env("CartPole-v1", n_envs=1, wrapper_class=ToDictWrapper)
+    model = RecurrentPPO(RecurrentFeaturesExtractorActorCriticPolicy, env, n_steps=32, policy_kwargs=policy_kwargs).learn(64)
+    evaluate_policy(model, env, warn=False)
+
+
 @pytest.mark.slow
-def test_ppo_lstm_performance():
+@pytest.mark.parametrize("policy", ["MlpLstmPolicy", "GRUFeatureExtractorPolicy"])
+def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]):
     # env = make_vec_env("CartPole-v1", n_envs=16)
     def make_env():
         env = CartPoleNoVelEnv()
@@ -222,8 +266,16 @@ def test_ppo_lstm_performance():
         eval_freq=5000 // env.num_envs,
     )
 
+    if policy == "GRUFeatureExtractorPolicy":
+        policy = RecurrentFeaturesExtractorActorCriticPolicy
+        extra_policy_kwargs = dict(
+            features_extractor_class=GRUFlattenExtractor, features_extractor_kwargs=dict(features_dim=64)
+        )
+    else:
+        extra_policy_kwargs = dict(lstm_hidden_size=64, enable_critic_lstm=True)
+
     model = RecurrentPPO(
-        "MlpLstmPolicy",
+        policy,
         env,
         n_steps=128,
         learning_rate=0.0007,
@@ -235,9 +287,8 @@ def test_ppo_lstm_performance():
         gae_lambda=0.98,
         policy_kwargs=dict(
             net_arch=dict(vf=[64], pi=[]),
-            lstm_hidden_size=64,
             ortho_init=False,
-            enable_critic_lstm=True,
+            **extra_policy_kwargs,
         ),
     )
 

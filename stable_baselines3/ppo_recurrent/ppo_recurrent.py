@@ -12,7 +12,10 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.pytree_dataclass import tree_map
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
-from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.policies import (
+    BaseRecurrentActorCriticPolicy,
+    RecurrentActorCriticPolicy,
+)
 from stable_baselines3.common.recurrent.type_aliases import (
     ActorCriticStates,
     RecurrentRolloutBufferData,
@@ -95,7 +98,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
     def __init__(
         self,
-        policy: Union[str, Type[RecurrentActorCriticPolicy]],
+        policy: Union[str, Type[BaseRecurrentActorCriticPolicy]],
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
