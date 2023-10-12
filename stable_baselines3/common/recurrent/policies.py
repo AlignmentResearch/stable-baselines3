@@ -622,7 +622,7 @@ class RecurrentMultiInputActorCriticPolicy(RecurrentActorCriticPolicy):
         )
 
 
-class RecurrentFeaturesExtractorActorCriticPolicy(ActorCriticPolicy, Generic[ExtractorInput, RecurrentState]):
+class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy, Generic[ExtractorInput, RecurrentState]):
     features_extractor: RecurrentFeaturesExtractor[ExtractorInput, RecurrentState]
 
     def __init__(
