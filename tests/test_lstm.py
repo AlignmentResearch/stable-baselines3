@@ -249,7 +249,7 @@ def test_dict_obs_recurrent_extractor():
     evaluate_policy(model, env, warn=False)
 
 
-@pytest.mark.slow
+@pytest.mark.expensive
 @pytest.mark.parametrize("policy", ["MlpLstmPolicy", "GRUFeatureExtractorPolicy"])
 def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]):
     # env = make_vec_env("CartPole-v1", n_envs=16)
