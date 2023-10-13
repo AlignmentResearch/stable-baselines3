@@ -168,7 +168,6 @@ class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState])
             episode_start = th.zeros(n_envs, dtype=th.bool, device=self.device)
 
         with th.no_grad():
-            # Convert to PyTorch tensors
             actions, state = self._predict(obs, state=state, episode_starts=episode_start, deterministic=deterministic)
 
         if isinstance(self.action_space, spaces.Box):
