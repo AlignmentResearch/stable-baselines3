@@ -1,17 +1,8 @@
-from typing import Generic, Optional, Tuple, TypeVar
+from typing import Generic, Tuple, TypeVar
 
 import torch as th
 
 from stable_baselines3.common.pytree_dataclass import FrozenPyTreeDataclass, TensorTree
-
-T = TypeVar("T")
-
-
-def non_null(v: Optional[T]) -> T:
-    if v is None:
-        raise ValueError("Expected a value, got None")
-    return v
-
 
 TensorTreeT = TypeVar("TensorTreeT", bound=TensorTree)
 
