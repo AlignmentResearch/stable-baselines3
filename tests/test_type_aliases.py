@@ -14,17 +14,18 @@ def test_non_null():
 
 
 def test_check_cast():
-    assert check_cast(dict, {}) == {}
-    assert check_cast(dict[str, int], {}) == {}
-    assert check_cast(Dict[str, int], {}) == {}
+    EMPTY_DICT = {}
+    assert check_cast(dict, EMPTY_DICT) is EMPTY_DICT
+    assert check_cast(dict[str, int], EMPTY_DICT) is EMPTY_DICT
+    assert check_cast(Dict[str, int], EMPTY_DICT) is EMPTY_DICT
 
     with pytest.raises(TypeError):
-        check_cast(list[int], {})
-        check_cast(List[int], {})
+        check_cast(list[int], EMPTY_DICT)
+        check_cast(List[int], EMPTY_DICT)
 
     # NOTE: check_cast does not check the template arguments, only the main class.
     # Tests should give an accurate understanding of how the function works, so we still check for this behavior.
     a: list[str] = ["a"]
     assert (
-        check_cast(list[int], a) == a
+        check_cast(list[int], a) is a
     ), "If you managed to write code to trigger this assert that's good! We'd like template arguments to be checked."
