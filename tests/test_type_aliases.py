@@ -23,5 +23,8 @@ def test_check_cast():
         check_cast(List[int], {})
 
     # NOTE: check_cast does not check the template arguments, only the main class.
+    # Tests should give an accurate understanding of how the function works, so we still check for this behavior.
     a: list[str] = ["a"]
-    assert check_cast(list[int], a) == a
+    assert (
+        check_cast(list[int], a) == a
+    ), "If you managed to write code to trigger this assert that's good! We'd like template arguments to be checked."
