@@ -44,6 +44,7 @@ class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[Extract
     ) -> Tuple[th.Tensor, RecurrentSubState]:
         (state_example, *_), _ = tree_flatten(init_state, is_leaf=None)
         n_layers, batch_sz, *_ = state_example.shape
+        assert n_layers == rnn.num_layers
 
         # Batch to sequence
         # (padded batch size, features_dim) -> (n_seq, max length, features_dim) -> (max length, n_seq, features_dim)
@@ -55,8 +56,13 @@ class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[Extract
             raise NotImplementedError("Resetting state in the middle of a sequence is not supported")
 
         first_state_is_not_reset = (~episode_starts[0]).contiguous()
-        # Shape here is (n_layers, batch_sz)
-        init_state = tree_map(lambda x: x * first_state_is_not_reset.view((1, batch_sz, *(1,) * (x.ndim - 2))), init_state)
+
+        def _reset_state_component(state: th.Tensor) -> th.Tensor:
+            assert state.shape == (rnn.num_layers, batch_sz, rnn.hidden_size)
+            reset_mask = first_state_is_not_reset.view((1, batch_sz, 1))
+            return state * reset_mask
+
+        init_state = tree_map(_reset_state_component, init_state)
         rnn_output, end_state = rnn(seq_inputs, init_state)
 
         # (seq_len, batch_size, ...) -> (batch_size, seq_len, ...) -> (batch_size * seq_len, ...)

@@ -1,4 +1,5 @@
 import abc
+import math
 from typing import Any, Dict, Generic, List, Optional, Tuple, Type, Union
 
 import torch as th
@@ -164,10 +165,9 @@ class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState])
             state = self.recurrent_initial_state(n_envs, device=self.device)
 
         if episode_start is None:
-            episode_start = th.zeros(n_envs, dtype=th.bool)
+            episode_start = th.zeros(n_envs, dtype=th.bool, device=self.device)
 
         with th.no_grad():
-            # Convert to PyTorch tensors
             actions, state = self._predict(obs, state=state, episode_starts=episode_start, deterministic=deterministic)
 
         if isinstance(self.action_space, spaces.Box):
@@ -257,30 +257,32 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     ):
         self.lstm_output_dim = lstm_hidden_size
         super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch,
-            activation_fn,
-            ortho_init,
-            use_sde,
-            log_std_init,
-            full_std,
-            use_expln,
-            squash_output,
-            features_extractor_class,
-            features_extractor_kwargs,
-            share_features_extractor,
-            normalize_images,
-            optimizer_class,
-            optimizer_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            ortho_init=ortho_init,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            full_std=full_std,
+            use_expln=use_expln,
+            squash_output=squash_output,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            share_features_extractor=share_features_extractor,
+            normalize_images=normalize_images,
+            optimizer_class=optimizer_class,
+            optimizer_kwargs=optimizer_kwargs,
         )
 
         self.lstm_kwargs = lstm_kwargs or {}
         self.shared_lstm = shared_lstm
         self.enable_critic_lstm = enable_critic_lstm
+
+        LSTM_BOX_LIMIT = math.nan  # It does not matter what the limit is, it won't get used.
         self.lstm_actor = LSTMFlattenExtractor(
-            spaces.Box(-1e9, 1e9, (self.features_dim,)),
+            spaces.Box(LSTM_BOX_LIMIT, LSTM_BOX_LIMIT, (self.features_dim,)),
             features_dim=lstm_hidden_size,
             num_layers=n_lstm_layers,
             **self.lstm_kwargs,
@@ -307,7 +309,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         # Use a separate LSTM for the critic
         if self.enable_critic_lstm:
             self.lstm_critic = LSTMFlattenExtractor(
-                spaces.Box(-1e9, 1e9, (self.features_dim,)),
+                spaces.Box(LSTM_BOX_LIMIT, LSTM_BOX_LIMIT, (self.features_dim,)),
                 features_dim=lstm_hidden_size,
                 num_layers=n_lstm_layers,
                 **self.lstm_kwargs,
@@ -507,28 +509,28 @@ class RecurrentActorCriticCnnPolicy(RecurrentActorCriticPolicy):
         lstm_kwargs: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch,
-            activation_fn,
-            ortho_init,
-            use_sde,
-            log_std_init,
-            full_std,
-            use_expln,
-            squash_output,
-            features_extractor_class,
-            features_extractor_kwargs,
-            share_features_extractor,
-            normalize_images,
-            optimizer_class,
-            optimizer_kwargs,
-            lstm_hidden_size,
-            n_lstm_layers,
-            shared_lstm,
-            enable_critic_lstm,
-            lstm_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            ortho_init=ortho_init,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            full_std=full_std,
+            use_expln=use_expln,
+            squash_output=squash_output,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            share_features_extractor=share_features_extractor,
+            normalize_images=normalize_images,
+            optimizer_class=optimizer_class,
+            optimizer_kwargs=optimizer_kwargs,
+            lstm_hidden_size=lstm_hidden_size,
+            n_lstm_layers=n_lstm_layers,
+            shared_lstm=shared_lstm,
+            enable_critic_lstm=enable_critic_lstm,
+            lstm_kwargs=lstm_kwargs,
         )
 
 
@@ -597,28 +599,28 @@ class RecurrentMultiInputActorCriticPolicy(RecurrentActorCriticPolicy):
         lstm_kwargs: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch,
-            activation_fn,
-            ortho_init,
-            use_sde,
-            log_std_init,
-            full_std,
-            use_expln,
-            squash_output,
-            features_extractor_class,
-            features_extractor_kwargs,
-            share_features_extractor,
-            normalize_images,
-            optimizer_class,
-            optimizer_kwargs,
-            lstm_hidden_size,
-            n_lstm_layers,
-            shared_lstm,
-            enable_critic_lstm,
-            lstm_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            ortho_init=ortho_init,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            full_std=full_std,
+            use_expln=use_expln,
+            squash_output=squash_output,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            share_features_extractor=share_features_extractor,
+            normalize_images=normalize_images,
+            optimizer_class=optimizer_class,
+            optimizer_kwargs=optimizer_kwargs,
+            lstm_hidden_size=lstm_hidden_size,
+            n_lstm_layers=n_lstm_layers,
+            shared_lstm=shared_lstm,
+            enable_critic_lstm=enable_critic_lstm,
+            lstm_kwargs=lstm_kwargs,
         )
 
 
@@ -650,7 +652,7 @@ class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy
         # Automatically deactivate dtype and bounds checks
         if normalize_images is False and issubclass(features_extractor_class, GRUNatureCNNExtractor):
             features_extractor_kwargs = features_extractor_kwargs.copy()
-            features_extractor_kwargs.update(dict(normalized_image=True))
+            features_extractor_kwargs["normalized_image"] = True
 
         if not issubclass(features_extractor_class, RecurrentFeaturesExtractor):
             base_features_extractor = features_extractor_class(observation_space, **features_extractor_kwargs)
@@ -660,26 +662,25 @@ class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy
             if "features_dim" in features_extractor_kwargs:
                 new_features_extractor_kwargs["features_dim"] = features_extractor_kwargs["features_dim"]
             features_extractor_kwargs = new_features_extractor_kwargs
-            print(features_extractor_class, features_extractor_kwargs)
 
         super().__init__(
-            observation_space,
-            action_space,
-            lr_schedule,
-            net_arch,
-            activation_fn,
-            ortho_init,
-            use_sde,
-            log_std_init,
-            full_std,
-            use_expln,
-            squash_output,
-            features_extractor_class,
-            features_extractor_kwargs,
-            share_features_extractor,
-            normalize_images,
-            optimizer_class,
-            optimizer_kwargs,
+            observation_space=observation_space,
+            action_space=action_space,
+            lr_schedule=lr_schedule,
+            net_arch=net_arch,
+            activation_fn=activation_fn,
+            ortho_init=ortho_init,
+            use_sde=use_sde,
+            log_std_init=log_std_init,
+            full_std=full_std,
+            use_expln=use_expln,
+            squash_output=squash_output,
+            features_extractor_class=features_extractor_class,
+            features_extractor_kwargs=features_extractor_kwargs,
+            share_features_extractor=share_features_extractor,
+            normalize_images=normalize_images,
+            optimizer_class=optimizer_class,
+            optimizer_kwargs=optimizer_kwargs,
         )
 
     def recurrent_initial_state(
