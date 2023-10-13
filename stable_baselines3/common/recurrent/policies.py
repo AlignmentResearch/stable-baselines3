@@ -1,4 +1,5 @@
 import abc
+import math
 from typing import Any, Dict, Generic, List, Optional, Tuple, Type, Union
 
 import torch as th
@@ -279,8 +280,10 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         self.lstm_kwargs = lstm_kwargs or {}
         self.shared_lstm = shared_lstm
         self.enable_critic_lstm = enable_critic_lstm
+
+        LSTM_BOX_LIMIT = math.nan  # It does not matter what the limit is, it won't get used.
         self.lstm_actor = LSTMFlattenExtractor(
-            spaces.Box(-1e9, 1e9, (self.features_dim,)),
+            spaces.Box(LSTM_BOX_LIMIT, LSTM_BOX_LIMIT, (self.features_dim,)),
             features_dim=lstm_hidden_size,
             num_layers=n_lstm_layers,
             **self.lstm_kwargs,
@@ -307,7 +310,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         # Use a separate LSTM for the critic
         if self.enable_critic_lstm:
             self.lstm_critic = LSTMFlattenExtractor(
-                spaces.Box(-1e9, 1e9, (self.features_dim,)),
+                spaces.Box(LSTM_BOX_LIMIT, LSTM_BOX_LIMIT, (self.features_dim,)),
                 features_dim=lstm_hidden_size,
                 num_layers=n_lstm_layers,
                 **self.lstm_kwargs,
