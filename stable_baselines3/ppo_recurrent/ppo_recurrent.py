@@ -1,6 +1,6 @@
 import sys
 import time
-from copy import deepcopy
+import warnings
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
@@ -10,10 +10,8 @@ from gymnasium import spaces
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.recurrent.buffers import (
-    RecurrentDictRolloutBuffer,
-    RecurrentRolloutBuffer,
-)
+from stable_baselines3.common.pytree_dataclass import tree_map
+from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
 from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
 from stable_baselines3.common.recurrent.type_aliases import (
     RecurrentRolloutBufferData,
@@ -24,10 +22,10 @@ from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedul
 from stable_baselines3.common.utils import (
     explained_variance,
     get_schedule_fn,
-    obs_as_tensor,
     safe_mean,
 )
 from stable_baselines3.common.vec_env import VecEnv
+from stable_baselines3.common.vec_env.util import obs_as_tensor
 from stable_baselines3.ppo_recurrent.policies import (
     CnnLstmPolicy,
     MlpLstmPolicy,
@@ -148,14 +146,38 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 spaces.MultiBinary,
             ),
         )
+        # Sanity check, otherwise it will lead to noisy gradient and NaN
+        # because of the advantage normalization
+        if normalize_advantage:
+            assert (
+                batch_size > 1
+            ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
+        if self.env is not None:
+            # Check that `n_steps * n_envs > 1` to avoid NaN
+            # when doing advantage normalization
+            buffer_size = self.env.num_envs * self.n_steps
+            assert buffer_size > 1 or (
+                not normalize_advantage
+            ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
+            # Check that the rollout buffer size is a multiple of the mini-batch size
+            untruncated_batches = buffer_size // batch_size
+            if buffer_size % batch_size > 0:
+                warnings.warn(
+                    f"You have specified a mini-batch size of {batch_size},"
+                    f" but because the `RolloutBuffer` is of size `n_steps * n_envs = {buffer_size}`,"
+                    f" after every {untruncated_batches} untruncated mini-batches,"
+                    f" there will be a truncated mini-batch of size {buffer_size % batch_size}\n"
+                    f"We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.\n"
+                    f"Info: (n_steps={self.n_steps} and n_envs={self.env.num_envs})"
+                )
         self.batch_size = batch_size
         self.n_epochs = n_epochs
-        self.clip_range = clip_range
-        self.clip_range_vf = clip_range_vf
+        self.clip_range: Schedule = clip_range  # type: ignore
+        self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
-        self._last_lstm_states = None
+        self._last_lstm_states: Optional[RNNStates] = None
 
         if _init_setup_model:
             self._setup_model()
@@ -163,8 +185,6 @@ class RecurrentPPO(OnPolicyAlgorithm):
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
-
-        buffer_cls = RecurrentDictRolloutBuffer if isinstance(self.observation_space, spaces.Dict) else RecurrentRolloutBuffer
 
         self.policy = self.policy_class(
             self.observation_space,
@@ -175,47 +195,23 @@ class RecurrentPPO(OnPolicyAlgorithm):
         )
         self.policy = self.policy.to(self.device)
 
-        # We assume that LSTM for the actor and the critic
-        # have the same architecture
-        lstm = self.policy.lstm_actor
+        # if not isinstance(self.policy, RecurrentActorCriticPolicy):
+        #     raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        if not isinstance(self.policy, RecurrentActorCriticPolicy):
-            raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
+        hidden_state_example = self.policy.recurrent_initial_state(n_envs=None, device=self.device)
 
-        per_timestep_hidden_state_shape = (lstm.num_layers, self.n_envs, lstm.hidden_size)
-        # hidden and cell states for actor and critic
-        self._last_lstm_states = RNNStates(
-            (
-                th.zeros(per_timestep_hidden_state_shape, device=self.device),
-                th.zeros(per_timestep_hidden_state_shape, device=self.device),
-            ),
-            (
-                th.zeros(per_timestep_hidden_state_shape, device=self.device),
-                th.zeros(per_timestep_hidden_state_shape, device=self.device),
-            ),
-        )
-
-        single_hidden_state_shape = (lstm.num_layers, lstm.hidden_size)
-        hidden_state_example = RNNStates(
-            (
-                th.zeros(single_hidden_state_shape, device=self.device),
-                th.zeros(single_hidden_state_shape, device=self.device),
-            ),
-            (
-                th.zeros(single_hidden_state_shape, device=self.device),
-                th.zeros(single_hidden_state_shape, device=self.device),
-            ),
-        )
-
-        self.rollout_buffer = buffer_cls(
+        self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,
             self.observation_space,
             self.action_space,
-            hidden_state_example,
-            self.device,
+            hidden_state_example=hidden_state_example,
+            device=self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
+        )
+        self._last_lstm_states = tree_map(  # type: ignore
+            lambda x: x[0].clone().contiguous(), self.rollout_buffer.data.hidden_states
         )
 
         # Initialize schedules for policy/value clipping
@@ -251,6 +247,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         assert self._last_obs is not None, "No previous observation was provided"
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
+        self._last_episode_starts = non_null(self._last_episode_starts).to(self.device)
 
         n_steps = 0
         rollout_buffer.reset()
@@ -260,7 +257,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         callback.on_rollout_start()
 
-        lstm_states = deepcopy(self._last_lstm_states)
+        lstm_states = non_null(self._last_lstm_states)
 
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
@@ -307,11 +304,10 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 ):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
-                        terminal_lstm_state = (
-                            lstm_states.vf[0][:, idx : idx + 1, :].contiguous(),
-                            lstm_states.vf[1][:, idx : idx + 1, :].contiguous(),
+                        terminal_lstm_state = tree_map(
+                            lambda x: x[:, idx : idx + 1, :].contiguous(),  # noqa: B023  ( idx not captured by function )
+                            lstm_states,
                         )
-                        # terminal_lstm_state = None
                         episode_starts = th.tensor([False], dtype=th.bool, device=self.device)
                         terminal_value = self.policy.predict_values(terminal_obs, terminal_lstm_state, episode_starts)[
                             0
@@ -331,13 +327,13 @@ class RecurrentPPO(OnPolicyAlgorithm):
             )
 
             self._last_obs = new_obs
-            self._last_episode_starts = dones
+            self._last_episode_starts = dones.to(self.device)
             self._last_lstm_states = lstm_states
 
         with th.no_grad():
             # Compute value for the last timestep
-            episode_starts = th.tensor(dones, dtype=th.bool, device=self.device)
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states.vf, episode_starts)
+            episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
@@ -375,23 +371,21 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     # Convert discrete action from float to long
                     actions = rollout_data.actions.long().flatten()
 
-                # Convert mask from float to bool
-                mask = rollout_data.mask > 1e-8
-
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
                     self.policy.reset_noise(self.batch_size)
 
                 values, log_prob, entropy = self.policy.evaluate_actions(
-                    rollout_data.observations,
+                    rollout_data.observations,  # type: ignore[arg-type]
                     actions,
-                    rollout_data.hidden_states,
+                    rollout_data.hidden_states,  # type: ignore[arg-type]
                     rollout_data.episode_starts,
                 )
 
                 values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
+                mask = rollout_data.mask
                 if self.normalize_advantage:
                     advantages = (advantages - advantages[mask].mean()) / (advantages[mask].std() + 1e-8)
 
@@ -500,7 +494,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
         callback.on_training_start(locals(), globals())
 
         while self.num_timesteps < total_timesteps:
-            continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+            continue_training = self.collect_rollouts(
+                non_null(self.env), callback, self.rollout_buffer, n_rollout_steps=self.n_steps
+            )
 
             if continue_training is False:
                 break
@@ -513,9 +509,10 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
                 fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
                 self.logger.record("time/iterations", iteration, exclude="tensorboard")
-                if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-                    self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-                    self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+                ep_info_buffer = non_null(self.ep_info_buffer)
+                if len(ep_info_buffer) > 0 and len(ep_info_buffer[0]) > 0:
+                    self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in ep_info_buffer]))
+                    self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in ep_info_buffer]))
                 self.logger.record("time/fps", fps)
                 self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
                 self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")

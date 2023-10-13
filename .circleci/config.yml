@@ -9,7 +9,7 @@ parameters:
   docker_img_version:
     # Docker image version for running tests.
     type: string
-    default: "a0d53ea"
+    default: "03a594c"
 
 workflows:
   test-jobs:
@@ -51,7 +51,7 @@ jobs:
           command: ruff .
       - run:
           name: Typecheck (mypy)
-          command: mypy --exclude '^stable_baselines3/common/recurrent/policies\.py$' stable_baselines3/common tests  # TODO: remove, in PR#4.
+          command: mypy .
   pytype:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>
@@ -62,7 +62,7 @@ jobs:
     working_directory: /workspace/third_party/stable-baselines3
     steps:
       - checkout
-      - run: pytype --keep-going -x stable_baselines3/common/recurrent/policies.py stable_baselines3/common tests  # TODO: remove, in PR#4.
+      - run: pytype -j 4 --keep-going
   py-tests:
     docker:
       - image: ghcr.io/alignmentresearch/learned-planners:<< pipeline.parameters.docker_img_version >>

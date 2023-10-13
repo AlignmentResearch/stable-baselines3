@@ -17,8 +17,8 @@ LSTMStates = Tuple[th.Tensor, th.Tensor]
 
 
 class RNNStates(FrozenPyTreeDataclass[th.Tensor]):
-    pi: Tuple[th.Tensor, ...]
-    vf: Tuple[th.Tensor, ...]
+    pi: LSTMStates
+    vf: LSTMStates
 
 
 class RecurrentRolloutBufferData(FrozenPyTreeDataclass[th.Tensor]):

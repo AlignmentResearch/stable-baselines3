@@ -6,7 +6,13 @@ import numpy as np
 import torch as th
 
 from stable_baselines3.common import type_aliases
-from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecEnv,
+    VecMonitor,
+    is_vecenv_wrapped,
+)
+from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 
 def evaluate_policy(
@@ -77,20 +83,17 @@ def evaluate_policy(
     episode_lengths = []
 
     observations = env.reset()
-    if isinstance(observations, dict):
-        device = next(iter(observations.values())).device
-    elif isinstance(observations, tuple):
-        device = observations[0].device
-    else:
-        device = observations.device
-    episode_counts = th.zeros(n_envs, dtype=th.int64, device=device)
+    observations = obs_as_tensor(observations, model.device)
+    episode_counts = th.zeros(n_envs, dtype=th.int64, device=model.device)
     # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = th.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device=device)
+    episode_count_targets = th.tensor(
+        [(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device=model.device
+    )
 
     states = None
-    current_rewards = th.zeros(n_envs, dtype=th.float32, device=device)
-    current_lengths = th.zeros(n_envs, dtype=th.int64, device=device)
-    episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=device)
+    current_rewards = th.zeros(n_envs, dtype=th.float32, device=model.device)
+    current_lengths = th.zeros(n_envs, dtype=th.int64, device=model.device)
+    episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=model.device)
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(
             observations,  # type: ignore[arg-type]
