@@ -653,7 +653,7 @@ class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy
         # Automatically deactivate dtype and bounds checks
         if normalize_images is False and issubclass(features_extractor_class, GRUNatureCNNExtractor):
             features_extractor_kwargs = features_extractor_kwargs.copy()
-            features_extractor_kwargs.update(dict(normalized_image=True))
+            features_extractor_kwargs["normalized_image"] = True
 
         if not issubclass(features_extractor_class, RecurrentFeaturesExtractor):
             base_features_extractor = features_extractor_class(observation_space, **features_extractor_kwargs)
