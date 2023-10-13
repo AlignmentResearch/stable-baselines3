@@ -1,24 +1,19 @@
-from typing import Optional, Tuple, TypeVar
+from typing import Generic, Tuple, TypeVar
 
 import torch as th
 
 from stable_baselines3.common.pytree_dataclass import FrozenPyTreeDataclass, TensorTree
 
-T = TypeVar("T")
+TensorTreeT = TypeVar("TensorTreeT", bound=TensorTree)
 
 
-def non_null(v: Optional[T]) -> T:
-    if v is None:
-        raise ValueError("Expected a value, got None")
-    return v
+LSTMRecurrentState = Tuple[th.Tensor, th.Tensor]
+GRURecurrentState = th.Tensor
 
 
-LSTMStates = Tuple[th.Tensor, th.Tensor]
-
-
-class RNNStates(FrozenPyTreeDataclass[th.Tensor]):
-    pi: LSTMStates
-    vf: LSTMStates
+class ActorCriticStates(FrozenPyTreeDataclass[th.Tensor], Generic[TensorTreeT]):
+    pi: TensorTreeT
+    vf: TensorTreeT
 
 
 class RecurrentRolloutBufferData(FrozenPyTreeDataclass[th.Tensor]):

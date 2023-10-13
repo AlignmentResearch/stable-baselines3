@@ -24,7 +24,7 @@ VecEnvStepReturn = Tuple[VecEnvObs, th.Tensor, th.Tensor, List[Dict]]
 EnvObs = Union[np.ndarray, Dict[str, np.ndarray], Tuple[np.ndarray, ...]]
 
 
-def tile_images(images_nhwc: Sequence[th.Tensor]) -> th.Tensor:  # pragma: no cover
+def tile_images(images_nhwc: Sequence[th.Tensor] | th.Tensor) -> th.Tensor:  # pragma: no cover
     """
     Tile N images into one big PxQ image
     (P,Q) are chosen to be as close as possible, and if N

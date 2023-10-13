@@ -12,7 +12,10 @@ from typing import (
     Protocol,
     SupportsFloat,
     Tuple,
+    Type,
+    TypeVar,
     Union,
+    get_origin,
 )
 
 import gymnasium as gym
@@ -117,3 +120,26 @@ class PolicyPredictor(Protocol):
         :return: the device on which this predictor lives
         """
         ...
+
+
+T = TypeVar("T")
+
+
+def non_null(v: Optional[T]) -> T:
+    """
+    Checks that `v` is not None, and returns it.
+    """
+    if v is None:
+        raise ValueError("Expected a value, got None")
+    return v
+
+
+def check_cast(cls: Type[T], v: Any) -> T:
+    """
+    Checks that `v` is of type `cls`, and returns it.
+
+    NOTE: this function does not check the template arguments, only the type itself.
+    """
+    if not isinstance(v, get_origin(cls) or cls):
+        raise TypeError(f"{v} should be of type {cls}")
+    return v

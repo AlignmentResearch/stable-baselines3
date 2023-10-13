@@ -12,13 +12,20 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.pytree_dataclass import tree_map
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
-from stable_baselines3.common.recurrent.policies import RecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.policies import (
+    BaseRecurrentActorCriticPolicy,
+    RecurrentActorCriticPolicy,
+)
 from stable_baselines3.common.recurrent.type_aliases import (
+    ActorCriticStates,
     RecurrentRolloutBufferData,
-    RNNStates,
+)
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    Schedule,
     non_null,
 )
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     explained_variance,
     get_schedule_fn,
@@ -95,7 +102,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
     def __init__(
         self,
-        policy: Union[str, Type[RecurrentActorCriticPolicy]],
+        policy: Union[str, Type[BaseRecurrentActorCriticPolicy]],
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
@@ -177,7 +184,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
-        self._last_lstm_states: Optional[RNNStates] = None
+        self._last_lstm_states: Optional[ActorCriticStates] = None
 
         if _init_setup_model:
             self._setup_model()
