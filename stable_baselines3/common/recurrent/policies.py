@@ -165,7 +165,7 @@ class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState])
             state = self.recurrent_initial_state(n_envs, device=self.device)
 
         if episode_start is None:
-            episode_start = th.zeros(n_envs, dtype=th.bool)
+            episode_start = th.zeros(n_envs, dtype=th.bool, device=self.device)
 
         with th.no_grad():
             # Convert to PyTorch tensors
