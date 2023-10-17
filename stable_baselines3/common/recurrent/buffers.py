@@ -67,6 +67,7 @@ def pad_and_flatten(
 def create_sequencers(
     episode_starts: th.Tensor,
     env_change: th.Tensor,
+    n_envs: int,
 ) -> Tuple[th.Tensor, int, Callable, Callable]:
     """
     Create the utility function to chunk data into
@@ -98,8 +99,16 @@ def create_sequencers(
     last_length = len(episode_starts) - seq_start_indices[-1].item()
     if lengths_except_last.numel():
         max_length = int(max(lengths_except_last.max().item(), last_length))
+        mean_length = float(lengths_except_last.sum().item() + last_length) / (len(lengths_except_last) + 1)
     else:
         max_length = int(last_length)
+        mean_length = float(last_length)
+
+    n_episodes = len(lengths_except_last) + 1
+    if n_episodes > n_envs * 3:
+        raise ValueError(
+            f"Episodes are too short. Probably this is an error. {n_episodes=}, {n_envs=}, {mean_length=}, {max_length=}"
+        )
 
     # Create padding method for this minibatch
     # to avoid repeating arguments (seq_start_indices, seq_end_indices)
@@ -279,7 +288,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
     ) -> RecurrentRolloutBufferSamples:
         # Retrieve sequence starts and utility function
         local_seq_start_indices, max_length, local_pad, local_pad_and_flatten = create_sequencers(
-            data.episode_starts[batch_inds], env_change[batch_inds]
+            data.episode_starts[batch_inds], env_change[batch_inds], self.n_envs
         )
 
         # Number of sequences
