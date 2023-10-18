@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 from functools import partial
 from typing import Callable, Generator, Optional, Tuple, Union
 
@@ -20,6 +21,8 @@ from stable_baselines3.common.recurrent.type_aliases import (
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.vec_env.util import as_torch_dtype
+
+log = logging.getLogger(__name__)
 
 
 def pad(
@@ -67,6 +70,7 @@ def pad_and_flatten(
 def create_sequencers(
     episode_starts: th.Tensor,
     env_change: th.Tensor,
+    n_envs: int,
 ) -> Tuple[th.Tensor, int, Callable, Callable]:
     """
     Create the utility function to chunk data into
@@ -98,8 +102,18 @@ def create_sequencers(
     last_length = len(episode_starts) - seq_start_indices[-1].item()
     if lengths_except_last.numel():
         max_length = int(max(lengths_except_last.max().item(), last_length))
+        mean_length = float(lengths_except_last.sum().item() + last_length) / (len(lengths_except_last) + 1)
     else:
         max_length = int(last_length)
+        mean_length = float(last_length)
+
+    n_episodes = len(lengths_except_last) + 1
+    if n_episodes > n_envs * 3:
+        log.warn(
+            f"Episodes are too short. Probably this is an error. You should reduce the number of steps collected per "
+            f"step by RecurrentPPO algorithm, or use an environment with longer episodes. "
+            f"{n_episodes=}, {n_envs=}, {mean_length=}, {max_length=}"
+        )
 
     # Create padding method for this minibatch
     # to avoid repeating arguments (seq_start_indices, seq_end_indices)
@@ -279,7 +293,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
     ) -> RecurrentRolloutBufferSamples:
         # Retrieve sequence starts and utility function
         local_seq_start_indices, max_length, local_pad, local_pad_and_flatten = create_sequencers(
-            data.episode_starts[batch_inds], env_change[batch_inds]
+            data.episode_starts[batch_inds], env_change[batch_inds], self.n_envs
         )
 
         # Number of sequences
