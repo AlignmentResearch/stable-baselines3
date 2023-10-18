@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 from functools import partial
 from typing import Callable, Generator, Optional, Tuple, Union
 
@@ -20,6 +21,8 @@ from stable_baselines3.common.recurrent.type_aliases import (
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.vec_env.util import as_torch_dtype
+
+log = logging.getLogger(__name__)
 
 
 def pad(
@@ -106,8 +109,10 @@ def create_sequencers(
 
     n_episodes = len(lengths_except_last) + 1
     if n_episodes > n_envs * 3:
-        raise ValueError(
-            f"Episodes are too short. Probably this is an error. {n_episodes=}, {n_envs=}, {mean_length=}, {max_length=}"
+        log.warn(
+            f"Episodes are too short. Probably this is an error. You should reduce the number of steps collected per "
+            f"step by RecurrentPPO algorithm, or use an environment with longer episodes. "
+            f"{n_episodes=}, {n_envs=}, {mean_length=}, {max_length=}"
         )
 
     # Create padding method for this minibatch
