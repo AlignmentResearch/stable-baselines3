@@ -169,10 +169,8 @@ class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
 # See links in https://github.com/metaopt/optree/issues/6, generic recursive types are not currently supported in mypy
 TensorTree = Union[
     th.Tensor,
-    Tuple["TensorTree", ...],
-    Tuple[th.Tensor, ...],
-    List["TensorTree"],
-    List[th.Tensor],
+    Sequence["TensorTree"],
+    Sequence[th.Tensor],
     Dict[Any, "TensorTree"],
     Dict[Any, th.Tensor],
     CustomTreeNode[th.Tensor],
