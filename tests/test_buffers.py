@@ -140,16 +140,15 @@ def test_device_buffer(replay_buffer_cls, device):
         RecurrentRolloutBuffer: DummyDictEnv,
     }[replay_buffer_cls]
     env = make_vec_env(env)
+    hidden_states_shape = HIDDEN_STATES_EXAMPLE["a"]["b"].shape
+    N_ENVS_HIDDEN_STATES = {"a": {"b": th.zeros((hidden_states_shape[0], env.num_envs, *hidden_states_shape[1:]))}}
 
     if replay_buffer_cls == RecurrentRolloutBuffer:
         buffer = RecurrentRolloutBuffer(
-            EP_LENGTH, env.observation_space, env.action_space, hidden_state_example=HIDDEN_STATES_EXAMPLE, device=device
+            EP_LENGTH, env.observation_space, env.action_space, hidden_state_example=N_ENVS_HIDDEN_STATES, device=device
         )
     else:
         buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device)
-
-    hidden_states_shape = HIDDEN_STATES_EXAMPLE["a"]["b"].shape
-    N_ENVS_HIDDEN_STATES = {"a": {"b": th.zeros((hidden_states_shape[0], env.num_envs, *hidden_states_shape[1:]))}}
 
     # Interract and store transitions
     obs = env.reset()

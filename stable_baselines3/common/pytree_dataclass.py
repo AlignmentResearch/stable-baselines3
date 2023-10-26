@@ -5,7 +5,6 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
-    List,
     Optional,
     Sequence,
     Tuple,

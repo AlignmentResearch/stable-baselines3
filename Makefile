@@ -27,7 +27,7 @@ lint:
 
 format:
 	# Sort imports
-	ruff --select I ${LINT_PATHS} --fix
+	ruff --fix .
 	# Reformat using black
 	black ${LINT_PATHS}
 
