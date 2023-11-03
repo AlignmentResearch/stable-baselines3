@@ -1,5 +1,6 @@
 import dataclasses
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     ClassVar,
@@ -153,16 +154,31 @@ class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
         return cls(**dict(zip_strict(cls._names(), children)))
 
 
-@dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
-    "Abstract class for immutable dataclass PyTrees"
-    ...
+if TYPE_CHECKING:
+    # Remove _PyTreeDataclassBase as a parent during type checking, so pyright correctly complains about missing
+    # attributes. I don't know *why* this works.
 
+    @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
+    class FrozenPyTreeDataclass(CustomTreeNode[T], Generic[T], frozen=True):
+        "Abstract class for immutable dataclass PyTrees"
+        ...
 
-@dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
-class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
-    "Abstract class for mutable dataclass PyTrees"
-    ...
+    @dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
+    class MutablePyTreeDataclass(CustomTreeNode[T], Generic[T], frozen=False):
+        "Abstract class for mutable dataclass PyTrees"
+        ...
+
+else:
+
+    @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
+    class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
+        "Abstract class for immutable dataclass PyTrees"
+        ...
+
+    @dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
+    class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
+        "Abstract class for mutable dataclass PyTrees"
+        ...
 
 
 # Manually expand the concrete type PyTree[th.Tensor] to make mypy happy.
