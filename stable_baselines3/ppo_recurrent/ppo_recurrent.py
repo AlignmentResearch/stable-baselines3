@@ -339,7 +339,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
+            dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
