@@ -511,8 +511,9 @@ class ActorCriticPolicy(BasePolicy):
 
         # Action distribution
         self.action_dist = make_proba_distribution(action_space, use_sde=use_sde, dist_kwargs=dist_kwargs)
+        self.lr_schedule = lr_schedule
 
-        self._build(lr_schedule)
+        self._build()
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -562,7 +563,7 @@ class ActorCriticPolicy(BasePolicy):
             device=self.device,
         )
 
-    def _build(self, lr_schedule: Schedule) -> None:
+    def _build(self) -> None:
         """
         Create the networks and the optimizer.
 
@@ -610,8 +611,17 @@ class ActorCriticPolicy(BasePolicy):
             for module, gain in module_gains.items():
                 module.apply(partial(self.init_weights, gain=gain))
 
-        # Setup optimizer with initial learning rate
-        self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
+    @property
+    def optimizer(self) -> th.optim.Optimizer:
+        """
+        Create optimizer with the default learning rate. We defer its creation to allow for moving the policy and its
+        parameters to the GPU.
+        """
+        try:
+            return self._optimizer
+        except AttributeError:
+            self._optimizer = self.optimizer_class(self.parameters(), lr=self.lr_schedule(1), **self.optimizer_kwargs)
+        return self._optimizer
 
     def forward(self, obs: TorchGymObs, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """
