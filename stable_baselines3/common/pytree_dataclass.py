@@ -122,7 +122,7 @@ if TYPE_CHECKING:
     # For some reason, having an exotic metaclass confuses Pyright, which then doesn't report accessing non-existing
     # attributes of the dataclasses below as an error. Thus we remove the metaclass for type-checking purposes.
 
-    class _PyTreeDataclassBase(CustomTreeNode[T]):
+    class _PyTreeDataclassBase(CustomTreeNode[T], Generic[T]):
         """Dummy class without _PyTreeDataclassMeta as a metaclass."""
 
         def __init_subclass__(cls, frozen: bool = False) -> None:  # Allow passing `frozen=` in subclasses
@@ -139,7 +139,7 @@ if TYPE_CHECKING:
 
 else:
 
-    class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
+    class _PyTreeDataclassBase(CustomTreeNode[T], Generic[T], metaclass=_PyTreeDataclassMeta):
         """
         Provides utility methods common to both MutablePyTreeDataclass and FrozenPyTreeDataclass.
 
