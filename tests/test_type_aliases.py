@@ -5,7 +5,7 @@ import pytest
 from stable_baselines3.common.type_aliases import check_cast, non_null
 
 
-def test_non_null():
+def test_non_null() -> None:
     for a in (1, "a", [2]):
         assert non_null(a) == a
 
@@ -13,8 +13,8 @@ def test_non_null():
         non_null(None)
 
 
-def test_check_cast():
-    EMPTY_DICT = {}
+def test_check_cast() -> None:
+    EMPTY_DICT: dict = {}
     assert check_cast(dict, EMPTY_DICT) is EMPTY_DICT
     assert check_cast(dict[str, int], EMPTY_DICT) is EMPTY_DICT
     assert check_cast(Dict[str, int], EMPTY_DICT) is EMPTY_DICT
