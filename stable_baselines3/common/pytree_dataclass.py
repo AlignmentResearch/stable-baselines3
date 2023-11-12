@@ -119,66 +119,74 @@ class _PyTreeDataclassMeta(type(CustomTreeNode)):  # type: ignore[misc]
         return cls
 
 
-class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
-    """
-    Provides utility methods common to both MutablePyTreeDataclass and FrozenPyTreeDataclass.
-
-    However _PyTreeDataclassBase is *not* a dataclass. as it hasn't been passed through the `dataclasses.dataclass(...)`
-    creation function.
-    """
-
-    _names_cache: ClassVar[Optional[Tuple[str, ...]]] = None
-
-    # Mark this class as a dataclass, for type checking purposes.
-    # Instead, it provides utility methods used by both Frozen and Mutable dataclasses.
-    __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field[Any]]]
-
-    @classmethod
-    def _names(cls) -> Tuple[str, ...]:
-        if cls._names_cache is None:
-            cls._names_cache = tuple(f.name for f in dataclasses.fields(cls))
-        return cls._names_cache
-
-    def __iter__(self):
-        seq, _, _ = self.tree_flatten()
-        return iter(seq)
-
-    # The annotations here are invalid for Pytype because T does not appear in the rest of the function. But it does
-    # appear as a parameter of the containing class, so it's actually not an error.
-    def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:  # pytype: disable=invalid-annotation
-        names = self._names()
-        return tuple(getattr(self, n) for n in names), None, names
-
-    @classmethod
-    def tree_unflatten(cls, metadata: None, children: Sequence[T]) -> CustomTreeNode[T]:  # pytype: disable=invalid-annotation
-        return cls(**dict(zip_strict(cls._names(), children)))
-
-
 if TYPE_CHECKING:
-    # Remove _PyTreeDataclassBase as a parent during type checking, so pyright correctly complains about missing
-    # attributes. I don't know *why* this works.
+    # For some reason, having an exotic metaclass confuses Pyright, which then doesn't report accessing non-existing
+    # attributes of the dataclasses below as an error. Thus we remove the metaclass for type-checking purposes.
 
-    @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-    class FrozenPyTreeDataclass(CustomTreeNode[T], Generic[T], frozen=True):
-        "Abstract class for immutable dataclass PyTrees"
-        ...
+    class _PyTreeDataclassBase(CustomTreeNode[T]):
+        """Dummy class without _PyTreeDataclassMeta as a metaclass."""
 
-    @dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
-    class MutablePyTreeDataclass(CustomTreeNode[T], Generic[T], frozen=False):
-        "Abstract class for mutable dataclass PyTrees"
-        ...
+        def __init_subclass__(cls, frozen: bool = False) -> None:  # Allow passing `frozen=` in subclasses
+            return super().__init_subclass__()
+
+        def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:  # pytype: disable=invalid-annotation
+            return (), None, ()
+
+        @classmethod
+        def tree_unflatten(
+            cls, metadata: None, children: Sequence[T]
+        ) -> CustomTreeNode[T]:  # pytype: disable=invalid-annotation
+            return cls()
 
 else:
 
-    @dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
-    class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
-        "Abstract class for immutable dataclass PyTrees"
-        ...
+    class _PyTreeDataclassBase(CustomTreeNode[T], metaclass=_PyTreeDataclassMeta):
+        """
+        Provides utility methods common to both MutablePyTreeDataclass and FrozenPyTreeDataclass.
 
-    @dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
-    class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
-        "Abstract class for mutable dataclass PyTrees"
-        ...
+        However _PyTreeDataclassBase is *not* a dataclass. as it hasn't been passed through the `dataclasses.dataclass(...)`
+        creation function.
+        """
+
+        _names_cache: ClassVar[Optional[Tuple[str, ...]]] = None
+
+        # Mark this class as a dataclass, for type checking purposes.
+        # Instead, it provides utility methods used by both Frozen and Mutable dataclasses.
+        __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field[Any]]]
+
+        @classmethod
+        def _names(cls) -> Tuple[str, ...]:
+            if cls._names_cache is None:
+                cls._names_cache = tuple(f.name for f in dataclasses.fields(cls))
+            return cls._names_cache
+
+        def __iter__(self):
+            seq, _, _ = self.tree_flatten()
+            return iter(seq)
+
+        # The annotations here are invalid for Pytype because T does not appear in the rest of the function. But it does
+        # appear as a parameter of the containing class, so it's actually not an error.
+        def tree_flatten(self) -> tuple[Sequence[T], None, tuple[str, ...]]:  # pytype: disable=invalid-annotation
+            names = self._names()
+            return tuple(getattr(self, n) for n in names), None, names
+
+        @classmethod
+        def tree_unflatten(
+            cls, metadata: None, children: Sequence[T]
+        ) -> CustomTreeNode[T]:  # pytype: disable=invalid-annotation
+            return cls(**dict(zip_strict(cls._names(), children)))
+
+
+@dataclass_transform(frozen_default=True)  # pytype: disable=not-supported-yet
+class FrozenPyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=True):
+    "Abstract class for immutable dataclass PyTrees"
+    ...
+
+
+@dataclass_transform(frozen_default=False)  # pytype: disable=not-supported-yet
+class MutablePyTreeDataclass(_PyTreeDataclassBase[T], Generic[T], frozen=False):
+    "Abstract class for mutable dataclass PyTrees"
+    ...
 
 
 # Manually expand the concrete type PyTree[th.Tensor] to make mypy happy.
