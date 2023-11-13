@@ -186,7 +186,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             advantages=self.advantages[idx],
             returns=self.returns[idx],
             hidden_states=tree_index(self.data.hidden_states, hidden_states_idx),  # Return only the first hidden state
-            episode_starts=self.data.episode_starts,
+            episode_starts=self.data.episode_starts[idx],
         )
 
 

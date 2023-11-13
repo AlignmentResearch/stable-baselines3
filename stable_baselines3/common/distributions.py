@@ -547,7 +547,7 @@ class StateDependentNoiseDistribution(Distribution):
         """
         # Stop gradient if we don't want to influence the features
         self._latent_sde = latent_sde if self.learn_features else latent_sde.detach()
-        variance = th.mm(self._latent_sde**2, self.get_std(log_std) ** 2)
+        variance = (self._latent_sde**2) @ (self.get_std(log_std) ** 2)
         self.distribution = Normal(mean_actions, th.sqrt(variance + self.epsilon))
         return self
 
@@ -590,7 +590,7 @@ class StateDependentNoiseDistribution(Distribution):
         latent_sde = latent_sde if self.learn_features else latent_sde.detach()
         # Default case: only one exploration matrix
         if len(latent_sde) == 1 or len(latent_sde) != len(self.exploration_matrices):
-            return th.mm(latent_sde, self.exploration_mat)
+            return latent_sde @ self.exploration_mat
         # Use batch matrix multiplication for efficient computation
         # (batch_size, n_features) -> (batch_size, 1, n_features)
         latent_sde = latent_sde.unsqueeze(dim=1)

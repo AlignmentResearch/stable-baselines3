@@ -375,8 +375,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
-                    # Convert discrete action from float to long
-                    actions = rollout_data.actions.long().flatten()
+                    actions = rollout_data.actions.squeeze(-1)
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
@@ -389,7 +388,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     rollout_data.episode_starts,
                 )
 
-                values = values.flatten()
+                values = values.squeeze(-1)
                 # Normalize advantage
                 advantages = rollout_data.advantages
                 if self.normalize_advantage:
