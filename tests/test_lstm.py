@@ -258,7 +258,9 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
         env = TimeLimit(env, max_episode_steps=500)
         return env
 
-    env = VecNormalize(make_vec_env(make_env, n_envs=8))
+    N_ENVS = 16
+    N_STEPS = 32
+    env = VecNormalize(make_vec_env(make_env, n_envs=N_ENVS))
 
     eval_callback = EvalCallback(
         VecNormalize(make_vec_env(make_env, n_envs=4), training=False, norm_reward=False),
@@ -277,10 +279,10 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
     model = RecurrentPPO(
         policy,
         env,
-        n_steps=128,
+        n_steps=N_STEPS,
         learning_rate=0.0007,
         verbose=1,
-        batch_size=256,
+        batch_size=N_ENVS * N_STEPS,
         seed=1,
         n_epochs=10,
         max_grad_norm=1,
@@ -292,7 +294,7 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
         ),
     )
 
-    model.learn(total_timesteps=50_000, callback=eval_callback)
+    model.learn(total_timesteps=60_000, callback=eval_callback)
     # Maximum episode reward is 500.
     # In CartPole-v1, a non-recurrent policy can easily get >= 450.
     # In CartPoleNoVelEnv, a non-recurrent policy doesn't get more than ~50.
