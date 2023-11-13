@@ -236,6 +236,7 @@ class SquashedDiagGaussianDistribution(DiagGaussianDistribution):
         log_prob = super().log_prob(gaussian_actions)
         # Squash correction (from original SAC implementation)
         # this comes from the fact that tanh is bijective and differentiable
+        assert actions.ndim in (2, 3)
         log_prob -= th.sum(th.log(1 - actions**2 + self.epsilon), dim=-1)
         return log_prob
 
@@ -298,6 +299,7 @@ class CategoricalDistribution(Distribution):
         return self.distribution.sample()
 
     def mode(self) -> th.Tensor:
+        assert self.distribution.probs.ndim in (2, 3)
         return th.argmax(self.distribution.probs, dim=-1)
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
@@ -339,11 +341,13 @@ class MultiCategoricalDistribution(Distribution):
     def proba_distribution(
         self: SelfMultiCategoricalDistribution, action_logits: th.Tensor
     ) -> SelfMultiCategoricalDistribution:
+        assert action_logits.ndim in (2, 3)
         self.distribution = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=-1)]
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
         # Extract each discrete action and compute log prob for their respective distributions
+        assert actions.ndim in (2, 3)
         return th.stack(
             [dist.log_prob(action) for dist, action in zip(self.distribution, th.unbind(actions, dim=-1))], dim=-1
         ).sum(dim=-1)
@@ -355,6 +359,8 @@ class MultiCategoricalDistribution(Distribution):
         return th.stack([dist.sample() for dist in self.distribution], dim=1)
 
     def mode(self) -> th.Tensor:
+        for dist in self.distribution:
+            assert dist.probs.ndim in (2, 3)
         return th.stack([th.argmax(dist.probs, dim=-1) for dist in self.distribution], dim=-1)
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
@@ -563,7 +569,9 @@ class StateDependentNoiseDistribution(Distribution):
 
         if self.bijector is not None:
             # Squash correction (from original SAC implementation)
-            log_prob -= th.sum(self.bijector.log_prob_correction(gaussian_actions), dim=-1)
+            correction = self.bijector.log_prob_correction(gaussian_actions)
+            assert correction.ndim in (2, 3)
+            log_prob -= th.sum(correction, dim=-1)
         return log_prob
 
     def entropy(self) -> Optional[th.Tensor]:
@@ -592,11 +600,11 @@ class StateDependentNoiseDistribution(Distribution):
         if len(latent_sde) == 1 or len(latent_sde) != len(self.exploration_matrices):
             return latent_sde @ self.exploration_mat
         # Use batch matrix multiplication for efficient computation
-        # (batch_size, n_features) -> (batch_size, 1, n_features)
-        latent_sde = latent_sde.unsqueeze(dim=-1)
+        # (seq_len?, batch_size, n_features) -> (seq_len?, batch_size, 1, n_features)
+        latent_sde = latent_sde.unsqueeze(dim=-2)
         # (batch_size, 1, n_actions)
         noise = th.bmm(latent_sde, self.exploration_matrices)
-        return noise.squeeze(dim=-1)
+        return noise.squeeze(dim=-2)
 
     def actions_from_params(
         self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
