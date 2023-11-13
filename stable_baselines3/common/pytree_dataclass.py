@@ -282,7 +282,7 @@ def tree_empty(
 
 def tree_index(
     tree: ConcreteTensorTree,
-    idx: TensorIndex,
+    idx: TensorIndex | tuple[TensorIndex, ...],
     *,
     is_leaf: None | Callable[[TensorTree], bool] = None,
     none_is_leaf: bool = False,
