@@ -38,6 +38,9 @@ def test_discrete(model_class, env):
         if model_class in (PPO, RecurrentPPO):
             kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
 
+        if model_class == RecurrentPPO:
+            TOTAL_TIMESTEPS = 25000
+
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
 
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
