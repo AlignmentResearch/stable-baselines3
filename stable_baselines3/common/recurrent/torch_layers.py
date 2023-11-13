@@ -212,7 +212,7 @@ class LSTMFlattenExtractor(RecurrentFeaturesExtractor[th.Tensor, LSTMRecurrentSt
     def forward(
         self, observations: th.Tensor, state: LSTMRecurrentState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, LSTMRecurrentState]:
-        observations = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), observations)  # type: ignore
+        observations = observations.view(-1, *observations.shape[episode_starts.ndim :])
         features: th.Tensor = self.base_extractor(observations)
         features = features.view(*episode_starts.shape, -1)
         return self._process_sequence(self.rnn, features, state, episode_starts)
