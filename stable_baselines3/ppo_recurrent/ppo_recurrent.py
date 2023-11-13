@@ -418,7 +418,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     )
                 # Value loss using the TD(gae_lambda) target
                 # Mask padded sequences
-                value_loss = th.mean(((rollout_data.returns - values_pred) ** 2))
+                value_loss = th.mean((rollout_data.returns - values_pred) ** 2)
 
                 value_losses.append(value_loss.item())
 
@@ -439,7 +439,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # and Schulman blog: http://joschu.net/blog/kl-approx.html
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl_div = th.mean(((th.exp(log_ratio) - 1) - log_ratio)).cpu().numpy()
+                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:

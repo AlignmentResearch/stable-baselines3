@@ -343,7 +343,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def _recurrent_latent_pi_and_vf(
         self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> Tuple[Tuple[th.Tensor, th.Tensor], ActorCriticStates[LSTMRecurrentState]]:
-        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment]
+        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment,arg-type]
         features = self.extract_features(obs)
         pi_features: th.Tensor
         vf_features: th.Tensor
@@ -381,7 +381,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def _recurrent_latent_vf_nostate(
         self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> th.Tensor:
-        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment]
+        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment,arg-type]
         vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
         vf_features = vf_features.view(*episode_starts.shape, *vf_features.shape[1:])
         latent_vf, _ = self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)

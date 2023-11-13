@@ -14,7 +14,6 @@ from stable_baselines3.common.pytree_dataclass import (
     tree_map,
 )
 from stable_baselines3.common.recurrent.type_aliases import (
-    ActorCriticStates,
     RecurrentRolloutBufferData,
     RecurrentRolloutBufferSamples,
 )
