@@ -116,7 +116,7 @@ def sum_independent_dims(tensor: th.Tensor) -> th.Tensor:
     :return: shape: (n_batch,)
     """
     if len(tensor.shape) > 1:
-        tensor = tensor.sum(dim=1)
+        tensor = tensor.sum(dim=-1)
     else:
         tensor = tensor.sum()
     return tensor
@@ -236,7 +236,7 @@ class SquashedDiagGaussianDistribution(DiagGaussianDistribution):
         log_prob = super().log_prob(gaussian_actions)
         # Squash correction (from original SAC implementation)
         # this comes from the fact that tanh is bijective and differentiable
-        log_prob -= th.sum(th.log(1 - actions**2 + self.epsilon), dim=1)
+        log_prob -= th.sum(th.log(1 - actions**2 + self.epsilon), dim=-1)
         return log_prob
 
     def entropy(self) -> Optional[th.Tensor]:
@@ -298,7 +298,7 @@ class CategoricalDistribution(Distribution):
         return self.distribution.sample()
 
     def mode(self) -> th.Tensor:
-        return th.argmax(self.distribution.probs, dim=1)
+        return th.argmax(self.distribution.probs, dim=-1)
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
@@ -339,14 +339,14 @@ class MultiCategoricalDistribution(Distribution):
     def proba_distribution(
         self: SelfMultiCategoricalDistribution, action_logits: th.Tensor
     ) -> SelfMultiCategoricalDistribution:
-        self.distribution = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=1)]
+        self.distribution = [Categorical(logits=split) for split in th.split(action_logits, tuple(self.action_dims), dim=-1)]
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
         # Extract each discrete action and compute log prob for their respective distributions
         return th.stack(
-            [dist.log_prob(action) for dist, action in zip(self.distribution, th.unbind(actions, dim=1))], dim=1
-        ).sum(dim=1)
+            [dist.log_prob(action) for dist, action in zip(self.distribution, th.unbind(actions, dim=-1))], dim=-1
+        ).sum(dim=-1)
 
     def entropy(self) -> th.Tensor:
         return th.stack([dist.entropy() for dist in self.distribution], dim=1).sum(dim=1)
@@ -355,7 +355,7 @@ class MultiCategoricalDistribution(Distribution):
         return th.stack([dist.sample() for dist in self.distribution], dim=1)
 
     def mode(self) -> th.Tensor:
-        return th.stack([th.argmax(dist.probs, dim=1) for dist in self.distribution], dim=1)
+        return th.stack([th.argmax(dist.probs, dim=-1) for dist in self.distribution], dim=-1)
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
@@ -399,7 +399,7 @@ class BernoulliDistribution(Distribution):
         return self.distribution.log_prob(actions).sum(dim=1)
 
     def entropy(self) -> th.Tensor:
-        return self.distribution.entropy().sum(dim=1)
+        return self.distribution.entropy().sum(dim=-1)
 
     def sample(self) -> th.Tensor:
         return self.distribution.sample()
@@ -563,7 +563,7 @@ class StateDependentNoiseDistribution(Distribution):
 
         if self.bijector is not None:
             # Squash correction (from original SAC implementation)
-            log_prob -= th.sum(self.bijector.log_prob_correction(gaussian_actions), dim=1)
+            log_prob -= th.sum(self.bijector.log_prob_correction(gaussian_actions), dim=-1)
         return log_prob
 
     def entropy(self) -> Optional[th.Tensor]:
@@ -593,10 +593,10 @@ class StateDependentNoiseDistribution(Distribution):
             return latent_sde @ self.exploration_mat
         # Use batch matrix multiplication for efficient computation
         # (batch_size, n_features) -> (batch_size, 1, n_features)
-        latent_sde = latent_sde.unsqueeze(dim=1)
+        latent_sde = latent_sde.unsqueeze(dim=-1)
         # (batch_size, 1, n_actions)
         noise = th.bmm(latent_sde, self.exploration_matrices)
-        return noise.squeeze(dim=1)
+        return noise.squeeze(dim=-1)
 
     def actions_from_params(
         self, mean_actions: th.Tensor, log_std: th.Tensor, latent_sde: th.Tensor, deterministic: bool = False
@@ -705,8 +705,8 @@ def kl_divergence(dist_true: Distribution, dist_pred: Distribution) -> th.Tensor
         assert np.allclose(dist_pred.action_dims, dist_true.action_dims), "Error: distributions must have the same input space"
         return th.stack(
             [th.distributions.kl_divergence(p, q) for p, q in zip(dist_true.distribution, dist_pred.distribution)],
-            dim=1,
-        ).sum(dim=1)
+            dim=-1,
+        ).sum(dim=-1)
 
     # Use the PyTorch kl_divergence implementation
     else:
