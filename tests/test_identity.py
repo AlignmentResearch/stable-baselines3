@@ -32,8 +32,8 @@ def test_discrete(model_class, env):
             return
     else:
         TOTAL_TIMESTEPS = 35000
-        CONCURRENT_ROLLOUT_STEPS = 16
-        SEQUENTIAL_ROLLOUT_STEPS = 10
+        CONCURRENT_ROLLOUT_STEPS = 32
+        SEQUENTIAL_ROLLOUT_STEPS = 8
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
         kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS)
 
