@@ -31,7 +31,7 @@ def test_discrete(model_class, env):
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
-        TOTAL_TIMESTEPS = 35000
+        TOTAL_TIMESTEPS = 50000
         CONCURRENT_ROLLOUT_STEPS = 32
         SEQUENTIAL_ROLLOUT_STEPS = 8
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
