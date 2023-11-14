@@ -2,6 +2,7 @@ import copy
 
 import numpy as np
 import pytest
+import torch
 
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.envs import (
@@ -21,6 +22,7 @@ DIM = 4
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
+    torch.manual_seed(1234)
     if model_class == DQN:
         TOTAL_TIMESTEPS = 10000
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)])
