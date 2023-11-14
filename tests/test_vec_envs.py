@@ -602,3 +602,21 @@ def test_render(vec_env_class):
     vec_env.render()
 
     vec_env.close()
+
+
+@pytest.mark.parametrize("vec_env_class", VEC_ENV_CLASSES)
+# n_envs: pick something that can fit in a rectangle, and something that cannot.
+@pytest.mark.parametrize("n_envs", [2, 3])
+def test_render_rgb(vec_env_class, n_envs: int):
+    """Test that we can tile_images on a vec_env with a non-rectangular number of envs."""
+    env_id = "Pendulum-v1"
+    vec_env = make_vec_env(
+        env_id,
+        n_envs,
+        vec_env_cls=vec_env_class,
+        env_kwargs=dict(render_mode="rgb_array"),
+    )
+    vec_env.reset()
+    out = vec_env.render()
+    assert out.ndim == 3, "There should be no batch dimension"
+    assert out.shape[-1] == 3, "Image is not HWC"
