@@ -31,6 +31,7 @@ def test_discrete(model_class, env):
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
+        TOTAL_TIMESTEPS = 35000
         CONCURRENT_ROLLOUT_STEPS = 16
         SEQUENTIAL_ROLLOUT_STEPS = 10
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
@@ -38,11 +39,6 @@ def test_discrete(model_class, env):
 
         if model_class in (PPO, RecurrentPPO):
             kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
-
-        if model_class == RecurrentPPO:
-            TOTAL_TIMESTEPS = 35000
-        else:
-            TOTAL_TIMESTEPS = 30000
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
 
