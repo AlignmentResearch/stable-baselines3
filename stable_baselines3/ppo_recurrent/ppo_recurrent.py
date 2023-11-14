@@ -205,7 +205,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # if not isinstance(self.policy, RecurrentActorCriticPolicy):
         #     raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        hidden_state_example = self.policy.recurrent_initial_state(n_envs=None, device=self.device)
+        hidden_state_example = self.policy.recurrent_initial_state(n_envs=self.n_envs, device=self.device)
 
         self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,
@@ -339,7 +339,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
-            episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
+            dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)

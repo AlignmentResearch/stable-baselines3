@@ -188,8 +188,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             values=th.zeros(batch_shape, dtype=th.float32, device=device),
             log_probs=th.zeros(batch_shape, dtype=th.float32, device=device),
             hidden_states=tree_map(
-                lambda x: th.zeros((self.buffer_size, x.shape[0], self.n_envs, *x.shape[1:]), dtype=x.dtype, device=device),
-                hidden_state_example,
+                lambda x: th.zeros((self.buffer_size, *x.shape), dtype=x.dtype, device=device), hidden_state_example
             ),
         )
 
