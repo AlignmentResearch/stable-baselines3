@@ -34,7 +34,7 @@ def test_discrete(model_class, env):
         CONCURRENT_ROLLOUT_STEPS = 16
         SEQUENTIAL_ROLLOUT_STEPS = 10
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
-        kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS, learning_rate=1e-3)
+        kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS, learning_rate=7e-3)
 
         if model_class in (PPO, RecurrentPPO):
             kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
