@@ -114,7 +114,7 @@ def preprocess_obs(
     elif isinstance(observation_space, spaces.Discrete):
         assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
         # One hot encoding and convert to float to avoid errors
-        return F.one_hot(obs.long(), num_classes=observation_space.n).float()
+        return F.one_hot(obs.long(), num_classes=int(observation_space.n)).float()
 
     elif isinstance(observation_space, spaces.MultiDiscrete):
         assert isinstance(obs, th.Tensor), f"Expected {th.Tensor}, got {type(obs)}"
