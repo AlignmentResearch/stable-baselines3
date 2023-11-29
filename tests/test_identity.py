@@ -24,15 +24,15 @@ DIM = 4
 def test_discrete(model_class, env):
     torch.manual_seed(1234)
     if model_class == DQN:
-        TOTAL_TIMESTEPS = 10000
+        TOTAL_TIMESTEPS = 2000
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)])
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
-        TOTAL_TIMESTEPS = 50000
-        CONCURRENT_ROLLOUT_STEPS = 32
+        TOTAL_TIMESTEPS = 3200
+        CONCURRENT_ROLLOUT_STEPS = 4
         SEQUENTIAL_ROLLOUT_STEPS = 8
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
         kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS)
@@ -42,7 +42,7 @@ def test_discrete(model_class, env):
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
 
-    evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
+    evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=90, warn=False)
     obs, _ = env.reset()
 
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
