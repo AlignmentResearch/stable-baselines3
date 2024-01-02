@@ -620,8 +620,11 @@ class ActorCriticPolicy(BasePolicy):
         try:
             return self._optimizer
         except AttributeError:
-            self._optimizer = self.optimizer_class(self.parameters(), lr=self.lr_schedule(1), **self.optimizer_kwargs)
+            self._optimizer = self._make_optimizer()
         return self._optimizer
+
+    def _make_optimizer(self) -> th.optim.Optimizer:
+        return self.optimizer_class(self.parameters(), lr=self.lr_schedule(1), **self.optimizer_kwargs)
 
     def forward(self, obs: TorchGymObs, deterministic: bool = False) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         """

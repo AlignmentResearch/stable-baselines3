@@ -640,6 +640,9 @@ class BaseAlgorithm(ABC):
                 # Catch anything for now.
                 raise ValueError(f"Key {name} is an invalid object name.") from e
 
+            # Undo compilation
+            state_dict = {k.replace("._orig_mod", ""): v for (k, v) in params[name].items()}
+
             if isinstance(attr, th.optim.Optimizer):
                 # Optimizers do not support "strict" keyword...
                 # Seems like they will just replace the whole
@@ -656,10 +659,10 @@ class BaseAlgorithm(ABC):
                 #
                 # Solution: Just load the state-dict as is, and trust
                 # the user has provided a sensible state dictionary.
-                attr.load_state_dict(params[name])  # type: ignore[arg-type]
+                attr.load_state_dict(state_dict)  # type: ignore[arg-type]
             else:
                 # Assume attr is th.nn.Module
-                attr.load_state_dict(params[name], strict=exact_match)
+                attr.load_state_dict(state_dict, strict=exact_match)
             updated_objects.add(name)
 
         if exact_match and updated_objects != objects_needing_update:
