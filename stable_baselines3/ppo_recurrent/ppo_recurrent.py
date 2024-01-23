@@ -209,9 +209,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
         )
-        self._last_lstm_states = tree_map(  # type: ignore
-            lambda x: x[0].clone().contiguous(), self.rollout_buffer.data.hidden_states
-        )
+        self._last_lstm_states = tree_map(lambda x: th.zeros_like(x, memory_format=th.contiguous_format), hidden_state_example)
 
         # Initialize schedules for policy/value clipping
         self.clip_range = get_schedule_fn(self.clip_range)
