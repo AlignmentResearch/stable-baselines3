@@ -167,10 +167,12 @@ def test_device_buffer(replay_buffer_cls, device):
         obs = next_obs
 
     # Get data from the buffer
-    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer, RecurrentRolloutBuffer]:
+    if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
         data = buffer.get(50)
     elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
         data = [buffer.sample(50)]
+    elif replay_buffer_cls == RecurrentRolloutBuffer:
+        data = buffer.get(EP_LENGTH)
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type

@@ -40,7 +40,9 @@ def tile_images(images_nhwc: Sequence[th.Tensor] | th.Tensor) -> th.Tensor:  # p
     new_height = int(math.ceil(math.sqrt(n_images)))
     # new_width was named W before
     new_width = int(math.ceil(float(n_images) / new_height))
-    img_nhwc = th.nn.functional.pad(img_nhwc, pad=(max(0, new_height * new_width - n_images), 0, 0, 0))
+    # Pad: c1, c2, w1, w2, h1, h2, n1, n2
+    padding = (0, 0, 0, 0, 0, 0, 0, max(0, new_height * new_width - n_images))
+    img_nhwc = th.nn.functional.pad(img_nhwc, pad=padding)
     # img_HWhwc
     out_image = img_nhwc.reshape((new_height, new_width, height, width, n_channels))
     # img_HhWwc

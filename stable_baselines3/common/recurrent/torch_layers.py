@@ -1,11 +1,12 @@
 import abc
+import functools
 from typing import Any, Dict, Generic, Optional, Tuple, TypeVar
 
 import gymnasium as gym
 import torch as th
 
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim
-from stable_baselines3.common.pytree_dataclass import TensorTree, tree_flatten, tree_map
+from stable_baselines3.common.pytree_dataclass import TensorTree, tree_map
 from stable_baselines3.common.recurrent.type_aliases import (
     GRURecurrentState,
     LSTMRecurrentState,
@@ -42,31 +43,37 @@ class RecurrentFeaturesExtractor(BaseFeaturesExtractor, abc.ABC, Generic[Extract
     def _process_sequence(
         rnn: th.nn.RNNBase, inputs: th.Tensor, init_state: RecurrentSubState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, RecurrentSubState]:
-        (state_example, *_), _ = tree_flatten(init_state, is_leaf=None)
-        n_layers, batch_sz, *_ = state_example.shape
-        assert n_layers == rnn.num_layers
+        if episode_starts.ndim == 1:
+            seq_len = 1
+            batch_sz = episode_starts.shape[0]
+            inputs = inputs.unsqueeze(0)
+            episode_starts = episode_starts.unsqueeze(0)
+            squeeze_end = True
+        else:
+            assert episode_starts.ndim == 2
+            seq_len, batch_sz = episode_starts.shape
+            squeeze_end = False
 
-        # Batch to sequence
-        # (padded batch size, features_dim) -> (n_seq, max length, features_dim) -> (max length, n_seq, features_dim)
-        seq_len = inputs.shape[0] // batch_sz
-        seq_inputs = inputs.view((batch_sz, seq_len, *inputs.shape[1:])).swapaxes(0, 1)
-        episode_starts = episode_starts.view((batch_sz, seq_len)).swapaxes(0, 1)
-
-        if th.any(episode_starts[1:]):
-            raise NotImplementedError("Resetting state in the middle of a sequence is not supported")
-
-        first_state_is_not_reset = (~episode_starts[0]).contiguous()
-
-        def _reset_state_component(state: th.Tensor) -> th.Tensor:
+        def _reset_state_component(reset_mask: th.Tensor, state: th.Tensor) -> th.Tensor:
             assert state.shape == (rnn.num_layers, batch_sz, rnn.hidden_size)
-            reset_mask = first_state_is_not_reset.view((1, batch_sz, 1))
             return state * reset_mask
 
-        init_state = tree_map(_reset_state_component, init_state)
-        rnn_output, end_state = rnn(seq_inputs, init_state)
+        if th.any(episode_starts[1:]):
+            state_is_not_reset = (~episode_starts).contiguous().view((seq_len, 1, batch_sz, 1))
 
-        # (seq_len, batch_size, ...) -> (batch_size, seq_len, ...) -> (batch_size * seq_len, ...)
-        rnn_output = rnn_output.transpose(0, 1).reshape((batch_sz * seq_len, *rnn_output.shape[2:]))
+            rnn_output_list: list[th.Tensor] = [None] * seq_len  # type: ignore
+            end_state = init_state
+            for t in range(seq_len):
+                end_state = tree_map(functools.partial(_reset_state_component, state_is_not_reset[t]), end_state)
+                rnn_output_list[t], end_state = rnn(inputs[t, None], end_state)
+            rnn_output = th.cat(rnn_output_list, dim=0)
+        else:
+            first_state_is_not_reset = (~episode_starts[0]).contiguous().view((1, batch_sz, 1))
+            init_state = tree_map(lambda s: _reset_state_component(first_state_is_not_reset, s), init_state)
+            rnn_output, end_state = rnn(inputs, init_state)
+
+        if squeeze_end:
+            rnn_output = rnn_output.squeeze(0)
         return rnn_output, end_state
 
 
@@ -112,7 +119,9 @@ class GRUWrappedFeaturesExtractor(RecurrentFeaturesExtractor[ExtractorInput, GRU
     def forward(
         self, observations: ExtractorInput, state: GRURecurrentState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, GRURecurrentState]:
+        observations = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), observations)  # type: ignore
         features: th.Tensor = self.base_extractor(observations)
+        features = features.view(*episode_starts.shape, -1)
         return self._process_sequence(self.rnn, features, state, episode_starts)
 
     @property
@@ -203,7 +212,9 @@ class LSTMFlattenExtractor(RecurrentFeaturesExtractor[th.Tensor, LSTMRecurrentSt
     def forward(
         self, observations: th.Tensor, state: LSTMRecurrentState, episode_starts: th.Tensor
     ) -> Tuple[th.Tensor, LSTMRecurrentState]:
+        observations = observations.view(-1, *observations.shape[episode_starts.ndim :])
         features: th.Tensor = self.base_extractor(observations)
+        features = features.view(*episode_starts.shape, -1)
         return self._process_sequence(self.rnn, features, state, episode_starts)
 
     @property

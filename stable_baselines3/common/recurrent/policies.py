@@ -4,6 +4,7 @@ from typing import Any, Dict, Generic, List, Optional, Tuple, Type, Union
 
 import torch as th
 from gymnasium import spaces
+from optree import tree_map
 from torch import nn
 
 from stable_baselines3.common.distributions import Distribution
@@ -342,6 +343,7 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def _recurrent_latent_pi_and_vf(
         self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> Tuple[Tuple[th.Tensor, th.Tensor], ActorCriticStates[LSTMRecurrentState]]:
+        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment,arg-type]
         features = self.extract_features(obs)
         pi_features: th.Tensor
         vf_features: th.Tensor
@@ -351,6 +353,10 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
         else:
             assert isinstance(features, tuple)
             pi_features, vf_features = features
+
+        pi_features = pi_features.view(*episode_starts.shape, *pi_features.shape[1:])
+        vf_features = vf_features.view(*episode_starts.shape, *vf_features.shape[1:])
+
         latent_pi, lstm_states_pi = self.lstm_actor.forward(pi_features, state.pi, episode_starts)
         latent_vf, lstm_states_vf = self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)
         if lstm_states_vf is None:
@@ -375,8 +381,11 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
     def _recurrent_latent_vf_nostate(
         self, obs: TorchGymObs, state: ActorCriticStates[LSTMRecurrentState], episode_starts: th.Tensor
     ) -> th.Tensor:
+        obs = tree_map(lambda x: x.view(-1, *x.shape[episode_starts.ndim :]), obs)  # type: ignore[assignment,arg-type]
         vf_features: th.Tensor = super(ActorCriticPolicy, self).extract_features(obs, self.vf_features_extractor)
-        return self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)[0]
+        vf_features = vf_features.view(*episode_starts.shape, *vf_features.shape[1:])
+        latent_vf, _ = self._recurrent_latent_vf_from_features(vf_features, state, episode_starts)
+        return latent_vf
 
     def forward(  # type: ignore[override]
         self,

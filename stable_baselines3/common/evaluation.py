@@ -84,15 +84,17 @@ def evaluate_policy(
 
     observations = env.reset()
     observations = obs_as_tensor(observations, model.device)
-    episode_counts = th.zeros(n_envs, dtype=th.int64, device=model.device)
+
+    # Hardcode episode counts and the reward accumulators to use CPU. They're used for bookkeeping and don't involve
+    # much computation.
+
+    episode_counts = th.zeros(n_envs, dtype=th.int64, device="cpu")
     # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = th.tensor(
-        [(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device=model.device
-    )
+    episode_count_targets = th.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device="cpu")
 
     states = None
-    current_rewards = th.zeros(n_envs, dtype=th.float32, device=model.device)
-    current_lengths = th.zeros(n_envs, dtype=th.int64, device=model.device)
+    current_rewards = th.zeros(n_envs, dtype=th.float32, device="cpu")
+    current_lengths = th.zeros(n_envs, dtype=th.int64, device="cpu")
     episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=model.device)
     while (episode_counts < episode_count_targets).any():
         actions, states = model.predict(
@@ -102,7 +104,7 @@ def evaluate_policy(
             deterministic=deterministic,
         )
         new_observations, rewards, dones, infos = env.step(actions)
-        current_rewards += rewards
+        current_rewards += rewards.to(current_rewards)
         current_lengths += 1
         for i in range(n_envs):
             if episode_counts[i] < episode_count_targets[i]:

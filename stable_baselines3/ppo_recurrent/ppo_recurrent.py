@@ -365,18 +365,17 @@ class RecurrentPPO(OnPolicyAlgorithm):
         entropy_losses = []
         pg_losses, value_losses = [], []
         clip_fractions = []
+        approx_kl_divs = []
 
         continue_training = True
 
         # train for n_epochs epochs
         for epoch in range(self.n_epochs):
-            approx_kl_divs = []
             # Do a complete pass on the rollout buffer
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
-                    # Convert discrete action from float to long
-                    actions = rollout_data.actions.long().flatten()
+                    actions = rollout_data.actions.squeeze(-1)
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
@@ -389,12 +388,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     rollout_data.episode_starts,
                 )
 
-                values = values.flatten()
+                values = values.squeeze(-1)
                 # Normalize advantage
                 advantages = rollout_data.advantages
-                mask = rollout_data.mask
                 if self.normalize_advantage:
-                    advantages = (advantages - advantages[mask].mean()) / (advantages[mask].std() + 1e-8)
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
                 # ratio between old and new policy, should be one at the first iteration
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
@@ -402,11 +400,11 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # clipped surrogate loss
                 policy_loss_1 = advantages * ratio
                 policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
-                policy_loss = -th.mean(th.min(policy_loss_1, policy_loss_2)[mask])
+                policy_loss = -th.mean(th.min(policy_loss_1, policy_loss_2))
 
                 # Logging
                 pg_losses.append(policy_loss.item())
-                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()[mask]).item()
+                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
 
                 if self.clip_range_vf is None:
@@ -420,16 +418,16 @@ class RecurrentPPO(OnPolicyAlgorithm):
                     )
                 # Value loss using the TD(gae_lambda) target
                 # Mask padded sequences
-                value_loss = th.mean(((rollout_data.returns - values_pred) ** 2)[mask])
+                value_loss = th.mean((rollout_data.returns - values_pred) ** 2)
 
                 value_losses.append(value_loss.item())
 
                 # Entropy loss favor exploration
                 if entropy is None:
                     # Approximate entropy when no analytical form
-                    entropy_loss = -th.mean(-log_prob[mask])
+                    entropy_loss = -th.mean(-log_prob)
                 else:
-                    entropy_loss = -th.mean(entropy[mask])
+                    entropy_loss = -th.mean(entropy)
 
                 entropy_losses.append(entropy_loss.item())
 
@@ -441,7 +439,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # and Schulman blog: http://joschu.net/blog/kl-approx.html
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl_div = th.mean(((th.exp(log_ratio) - 1) - log_ratio)[mask]).cpu().numpy()
+                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).item()
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:

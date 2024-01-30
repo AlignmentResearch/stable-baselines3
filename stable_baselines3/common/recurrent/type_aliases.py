@@ -35,4 +35,3 @@ class RecurrentRolloutBufferSamples(FrozenPyTreeDataclass[th.Tensor]):
     episode_starts: th.Tensor
     advantages: th.Tensor
     returns: th.Tensor
-    mask: th.Tensor

@@ -1,5 +1,8 @@
+import copy
+
 import numpy as np
 import pytest
+import torch
 
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.envs import (
@@ -19,16 +22,25 @@ DIM = 4
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
-    env_ = DummyVecEnv([lambda: env])
-    kwargs = {}
-    n_steps = 25000 if model_class == RecurrentPPO else 10000
+    torch.manual_seed(1234)
     if model_class == DQN:
+        TOTAL_TIMESTEPS = 10000
+        env_ = DummyVecEnv([lambda: copy.deepcopy(env)])
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
+    else:
+        TOTAL_TIMESTEPS = 50000
+        CONCURRENT_ROLLOUT_STEPS = 32
+        SEQUENTIAL_ROLLOUT_STEPS = 8
+        env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
+        kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS)
 
-    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
+        if model_class in (PPO, RecurrentPPO):
+            kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
+
+    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
 
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
     obs, _ = env.reset()
