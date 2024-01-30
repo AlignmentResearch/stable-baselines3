@@ -1,10 +1,8 @@
 import copy
-import random
 from typing import Any
 
 import numpy as np
 import pytest
-import torch
 
 from stable_baselines3 import A2C, DDPG, DQN, PPO, SAC, TD3, RecurrentPPO
 from stable_baselines3.common.envs import (
