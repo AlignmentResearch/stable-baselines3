@@ -103,6 +103,7 @@ def test_cnn(policy_kwargs):
         "CnnLstmPolicy",
         FakeImageEnv(screen_height=40, screen_width=40, n_channels=3),
         n_steps=16,
+        batch_time=16,
         seed=0,
         policy_kwargs=dict(**policy_kwargs, features_extractor_kwargs=dict(features_dim=32)),
         n_epochs=2,
@@ -116,6 +117,7 @@ def test_cnn_recurrent_extractor():
         RecurrentFeaturesExtractorActorCriticPolicy,
         FakeImageEnv(screen_height=40, screen_width=40, n_channels=3),
         n_steps=16,
+        batch_time=16,
         seed=0,
         policy_kwargs=dict(features_extractor_class=GRUNatureCNNExtractor, features_extractor_kwargs=dict(features_dim=32)),
         n_epochs=2,
@@ -148,6 +150,7 @@ def test_policy_kwargs(policy_kwargs):
         "MlpLstmPolicy",
         "CartPole-v1",
         n_steps=16,
+        batch_time=16,
         seed=0,
         policy_kwargs=policy_kwargs,
     )
@@ -162,6 +165,7 @@ def test_check():
             "MlpLstmPolicy",
             "CartPole-v1",
             n_steps=16,
+            batch_time=16,
             seed=0,
             policy_kwargs=policy_kwargs,
         )
@@ -172,6 +176,7 @@ def test_check():
             "MlpLstmPolicy",
             "CartPole-v1",
             n_steps=16,
+            batch_time=16,
             seed=0,
             policy_kwargs=policy_kwargs,
         )
@@ -183,6 +188,7 @@ def test_run(env):
         "MlpLstmPolicy",
         env,
         n_steps=16,
+        batch_time=16,
         seed=0,
     )
 
@@ -194,6 +200,7 @@ def test_run_sde():
         "MlpLstmPolicy",
         "Pendulum-v1",
         n_steps=16,
+        batch_time=16,
         seed=0,
         sde_sample_freq=4,
         use_sde=True,
@@ -208,6 +215,7 @@ def test_run_sde_recurrent_extractor():
         RecurrentFeaturesExtractorActorCriticPolicy,
         "Pendulum-v1",
         n_steps=16,
+        batch_time=16,
         seed=0,
         sde_sample_freq=4,
         use_sde=True,
@@ -238,14 +246,16 @@ def test_run_sde_recurrent_extractor():
 )
 def test_dict_obs(policy_kwargs):
     env = make_vec_env("CartPole-v1", n_envs=1, wrapper_class=ToDictWrapper)
-    model = RecurrentPPO("MultiInputLstmPolicy", env, n_steps=32, policy_kwargs=policy_kwargs).learn(64)
+    model = RecurrentPPO("MultiInputLstmPolicy", env, n_steps=32, batch_time=16, policy_kwargs=policy_kwargs).learn(64)
     evaluate_policy(model, env, warn=False)
 
 
 def test_dict_obs_recurrent_extractor():
     policy_kwargs = dict(features_extractor_class=GRUCombinedExtractor)
     env = make_vec_env("CartPole-v1", n_envs=1, wrapper_class=ToDictWrapper)
-    model = RecurrentPPO(RecurrentFeaturesExtractorActorCriticPolicy, env, n_steps=32, policy_kwargs=policy_kwargs).learn(64)
+    model = RecurrentPPO(
+        RecurrentFeaturesExtractorActorCriticPolicy, env, n_steps=32, batch_time=16, policy_kwargs=policy_kwargs
+    ).learn(64)
     evaluate_policy(model, env, warn=False)
 
 
