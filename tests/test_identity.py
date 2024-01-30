@@ -1,4 +1,6 @@
 import copy
+import random
+from typing import Any
 
 import numpy as np
 import pytest
@@ -22,27 +24,32 @@ DIM = 4
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
-    torch.manual_seed(1234)
     if model_class == DQN:
-        TOTAL_TIMESTEPS = 10000
+        TOTAL_TIMESTEPS = 2500
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)])
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
-        TOTAL_TIMESTEPS = 50000
-        CONCURRENT_ROLLOUT_STEPS = 32
+        TOTAL_TIMESTEPS = 6000 if model_class == RecurrentPPO else 2000
+        CONCURRENT_ROLLOUT_STEPS = 2
         SEQUENTIAL_ROLLOUT_STEPS = 8
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
-        kwargs = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS)
+        kwargs: dict[str, Any] = dict(
+            n_steps=SEQUENTIAL_ROLLOUT_STEPS, learning_rate=1e-3, policy_kwargs=dict(net_arch=dict(pi=[], vf=[]))
+        )
 
-        if model_class in (PPO, RecurrentPPO):
+        if model_class == PPO:
             kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
 
-    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
+        if model_class == RecurrentPPO:
+            kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
+            kwargs["policy_kwargs"].update(dict(lstm_hidden_size=32))
 
-    evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
+    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
+    mean_reward, std_reward = evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
+    print(f"{mean_reward=}, {std_reward=}")
     obs, _ = env.reset()
 
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
@@ -54,7 +61,7 @@ def test_continuous(model_class):
 
     n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
-    kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
+    kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), gamma=0.95)
 
     if model_class in [TD3]:
         n_actions = 1
@@ -64,7 +71,9 @@ def test_continuous(model_class):
         kwargs["policy_kwargs"]["log_std_init"] = -0.5
     elif model_class == PPO:
         kwargs = dict(n_steps=512, n_epochs=5)
+    elif model_class == RecurrentPPO:
+        kwargs = dict(policy_kwargs=dict(net_arch=[], lstm_hidden_size=32), gae_lambda=0.4, n_steps=8)
 
-    model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(n_steps)
+    model = model_class("MlpPolicy", env, learning_rate=1e-3, seed=1, **kwargs).learn(n_steps)
 
     evaluate_policy(model, env, n_eval_episodes=20, reward_threshold=90, warn=False)
