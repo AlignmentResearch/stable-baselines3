@@ -115,10 +115,7 @@ def sum_independent_dims(tensor: th.Tensor) -> th.Tensor:
     :param tensor: shape: (n_batch, n_actions) or (n_batch,)
     :return: shape: (n_batch,)
     """
-    if len(tensor.shape) > 1:
-        tensor = tensor.sum(dim=-1)
-    else:
-        tensor = tensor.sum()
+    tensor = tensor.sum(dim=-1)
     return tensor
 
 

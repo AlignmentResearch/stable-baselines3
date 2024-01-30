@@ -84,6 +84,10 @@ def evaluate_policy(
 
     observations = env.reset()
     observations = obs_as_tensor(observations, model.device)
+
+    # Hardcode episode counts and the reward accumulators to use CPU. They're used for bookkeeping and don't involve
+    # much computation.
+
     episode_counts = th.zeros(n_envs, dtype=th.int64, device="cpu")
     # Divides episodes among different sub environments in the vector as evenly as possible
     episode_count_targets = th.tensor([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype=th.int64, device="cpu")
