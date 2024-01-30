@@ -1,6 +1,5 @@
 import sys
 import time
-import warnings
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
@@ -369,7 +368,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
-                    self.policy.reset_noise(self.batch_size * self.batch_time)
+                    self.policy.reset_noise(self.batch_envs * self.batch_time)
 
                 values, log_prob, entropy = self.policy.evaluate_actions(
                     rollout_data.observations,  # type: ignore[arg-type]
