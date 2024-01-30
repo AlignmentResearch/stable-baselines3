@@ -53,6 +53,7 @@ from stable_baselines3.common.type_aliases import (
     Schedule,
     TensorDict,
     TorchGymObsBasic,
+    check_cast,
 )
 from stable_baselines3.common.utils import (
     check_for_correct_spaces,
@@ -641,7 +642,7 @@ class BaseAlgorithm(ABC):
                 raise ValueError(f"Key {name} is an invalid object name.") from e
 
             # Undo compilation
-            state_dict = {k.replace("._orig_mod", ""): v for (k, v) in params[name].items()}
+            state_dict = {k.replace("._orig_mod", ""): v for (k, v) in check_cast(dict, params[name]).items()}
 
             if isinstance(attr, th.optim.Optimizer):
                 # Optimizers do not support "strict" keyword...
