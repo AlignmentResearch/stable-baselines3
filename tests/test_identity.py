@@ -17,6 +17,53 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 
 DIM = 4
 
+# This test used to be flaky because IdentityEnvs weren't properly seeded, but commit 56ba245a solved that.
+#
+# Now the test is consistent between different runs on the *same* machine, but its results for RecurrentPPO can vary
+# quite a lot between machines; presumably because of the LSTM operation.
+#
+# Here are some example results. You can see they're consistent between runs on the same machine (Apple M2 docker), and
+# only the RecurrentPPO results vary between machines.
+#
+# * Apple M2: Docker on x86_64 VM (Rosetta)
+# ** 1
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 12.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 9.00 < 99.00
+
+# ** 2
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 12.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 9.00 < 99.00
+
+# ** Apple M2: native, non-virtualized
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.65 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 8.90 < 99.00
+
+# * AMD EPYC: Flamingo
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 36.40 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 7.15 < 99.00
+
+# * CircleCI (Intel?)
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 54.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 6.20 < 99.00
+
 
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
