@@ -30,7 +30,7 @@ def test_discrete(model_class, env):
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
-        TOTAL_TIMESTEPS = 6000 if model_class == RecurrentPPO else 2000
+        TOTAL_TIMESTEPS = 10000
         CONCURRENT_ROLLOUT_STEPS = 2
         SEQUENTIAL_ROLLOUT_STEPS = 8
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
