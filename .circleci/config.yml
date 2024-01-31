@@ -77,7 +77,7 @@ jobs:
       - run:
           name: Run tests
           command: |
-            /workspace/dist_test.py --worker-out-dir /workspace/test-results tests/test_identity.py -k Recurrent
+            /workspace/dist_test.py --worker-out-dir /workspace/test-results . -k 'not test_save_load_large_model'
           environment:
             OMP_NUM_THREADS: "2"
       - save-worker-test-results

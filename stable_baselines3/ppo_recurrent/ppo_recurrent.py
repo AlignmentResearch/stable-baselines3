@@ -321,7 +321,6 @@ class RecurrentPPO(OnPolicyAlgorithm):
                         ].squeeze()
                     rewards[idx] += self.gamma * terminal_value
 
-            raise Exception(str(self._last_obs[:3]))
             rollout_buffer.add(
                 RecurrentRolloutBufferData(
                     self._last_obs,
