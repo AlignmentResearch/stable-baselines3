@@ -57,6 +57,8 @@ def test_continuous(model_class):
         kwargs["policy_kwargs"]["log_std_init"] = -0.5
     elif model_class == PPO:
         kwargs = dict(n_steps=512, n_epochs=5)
+    elif model_class == RecurrentPPO:
+        kwargs["policy_kwargs"]["net_arch"] = dict(vf=[], pi=[])
 
     model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(n_steps)
 
