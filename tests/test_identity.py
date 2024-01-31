@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -20,13 +22,16 @@ DIM = 4
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
-    kwargs = {}
+    kwargs: dict[str, Any] = {}
     n_steps = 25000 if model_class == RecurrentPPO else 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
+
+    if model_class == RecurrentPPO:
+        kwargs["net_arch"] = dict(vf=[], pi=[])
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
 
@@ -42,7 +47,7 @@ def test_continuous(model_class):
 
     n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
-    kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
+    kwargs: dict[str, Any] = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
 
     if model_class in [TD3]:
         n_actions = 1
