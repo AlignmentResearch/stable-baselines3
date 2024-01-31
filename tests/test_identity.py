@@ -30,9 +30,9 @@ def test_discrete(model_class, env):
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
     else:
-        TOTAL_TIMESTEPS = 10000
-        CONCURRENT_ROLLOUT_STEPS = 2
-        SEQUENTIAL_ROLLOUT_STEPS = 8
+        TOTAL_TIMESTEPS = 2500
+        CONCURRENT_ROLLOUT_STEPS = 1 if model_class == A2C else 2
+        SEQUENTIAL_ROLLOUT_STEPS = 64 if model_class == A2C else 32
         env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
         kwargs: dict[str, Any] = dict(
             n_steps=SEQUENTIAL_ROLLOUT_STEPS, learning_rate=1e-3, policy_kwargs=dict(net_arch=dict(pi=[], vf=[]))
