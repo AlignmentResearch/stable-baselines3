@@ -23,7 +23,7 @@ DIM = 4
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
     kwargs: dict[str, Any] = {}
-    n_steps = 10000
+    n_steps = 25000 if model_class == RecurrentPPO else 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
@@ -31,7 +31,7 @@ def test_discrete(model_class, env):
             return
 
     if model_class == RecurrentPPO:
-        kwargs["net_arch"] = dict(vf=[], pi=[])
+        kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
 
