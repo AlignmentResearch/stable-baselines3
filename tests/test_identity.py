@@ -1,4 +1,3 @@
-import copy
 from typing import Any
 
 import numpy as np
@@ -18,28 +17,70 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 
 DIM = 4
 
+# This test used to be flaky because IdentityEnvs weren't properly seeded, but commit 56ba245a solved that.
+#
+# Now the test is consistent between different runs on the *same* machine, but its results for RecurrentPPO can vary
+# quite a lot between machines; presumably because of the LSTM operation.
+#
+# Here are some example results. You can see they're consistent between runs on the same machine (Apple M2 docker), and
+# only the RecurrentPPO results vary between machines.
+#
+# * Apple M2: Docker on x86_64 VM (Rosetta)
+# ** 1
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 12.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 9.00 < 99.00
+
+# ** 2
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 12.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 9.00 < 99.00
+
+# ** Apple M2: native, non-virtualized
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.65 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 8.90 < 99.00
+
+# * AMD EPYC: Flamingo
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 36.40 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 7.15 < 99.00
+
+# * CircleCI (Intel?)
+# FAILED tests/test_identity.py::test_discrete[env1-A2C] - AssertionError: Mean reward below threshold: 93.10 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-PPO] - AssertionError: Mean reward below threshold: 71.05 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env1-RecurrentPPO] - AssertionError: Mean reward below threshold: 54.70 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-A2C] - AssertionError: Mean reward below threshold: 25.50 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-PPO] - AssertionError: Mean reward below threshold: 5.90 < 99.00
+# FAILED tests/test_identity.py::test_discrete[env2-RecurrentPPO] - AssertionError: Mean reward below threshold: 6.20 < 99.00
+
 
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
 @pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
 def test_discrete(model_class, env):
+    env_ = DummyVecEnv([lambda: env])
+    kwargs: dict[str, Any] = {}
+    n_steps = 10000
     if model_class == DQN:
-        TOTAL_TIMESTEPS = 10000
-        env_ = DummyVecEnv([lambda: copy.deepcopy(env)])
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
         if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
-    else:
-        TOTAL_TIMESTEPS = 10000
-        CONCURRENT_ROLLOUT_STEPS = 32
-        SEQUENTIAL_ROLLOUT_STEPS = 8
-        env_ = DummyVecEnv([lambda: copy.deepcopy(env)] * CONCURRENT_ROLLOUT_STEPS)
-        kwargs: dict[str, Any] = dict(n_steps=SEQUENTIAL_ROLLOUT_STEPS, policy_kwargs=dict(net_arch=dict(pi=[], vf=[])))
 
-        if model_class in (PPO, RecurrentPPO):
-            kwargs["batch_size"] = CONCURRENT_ROLLOUT_STEPS * SEQUENTIAL_ROLLOUT_STEPS
+    if model_class == RecurrentPPO:
+        kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
 
-    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(TOTAL_TIMESTEPS)
+    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
 
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
     obs, _ = env.reset()
@@ -53,7 +94,7 @@ def test_continuous(model_class):
 
     n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
-    kwargs = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
+    kwargs: dict[str, Any] = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
 
     if model_class in [TD3]:
         n_actions = 1
@@ -63,7 +104,9 @@ def test_continuous(model_class):
         kwargs["policy_kwargs"]["log_std_init"] = -0.5
     elif model_class == PPO:
         kwargs = dict(n_steps=512, n_epochs=5)
+    elif model_class == RecurrentPPO:
+        kwargs["policy_kwargs"]["net_arch"] = dict(vf=[], pi=[])
 
-    model = model_class("MlpPolicy", env, learning_rate=1e-3, seed=1, **kwargs).learn(n_steps)
+    model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(n_steps)
 
     evaluate_policy(model, env, n_eval_episodes=20, reward_threshold=90, warn=False)
