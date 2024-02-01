@@ -302,7 +302,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
-            reward_average += np.mean(rewards)
+            reward_average += rewards.mean().item()
 
             self.num_timesteps += env.num_envs
 
