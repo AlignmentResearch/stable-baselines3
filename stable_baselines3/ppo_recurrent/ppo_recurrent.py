@@ -281,6 +281,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
         lstm_states = non_null(self._last_lstm_states)
 
+        reward_average = 0.0
         while n_steps < n_rollout_steps:
             if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
@@ -301,6 +302,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
+            reward_average += np.mean(rewards)
 
             self.num_timesteps += env.num_envs
 
@@ -351,6 +353,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
             self._last_obs = new_obs
             self._last_episode_starts = dones.to(self.device)
             self._last_lstm_states = lstm_states
+
+        self.logger.record("train/reward", n_steps)
 
         # Compute value for the last timestep
         dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
