@@ -260,6 +260,7 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
 
     N_ENVS = 16
     N_STEPS = 32
+    BATCH_TIME = 4
     env = VecNormalize(make_vec_env(make_env, n_envs=N_ENVS))
 
     eval_callback = EvalCallback(
@@ -283,7 +284,7 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
         learning_rate=0.0007,
         verbose=1,
         batch_envs=N_ENVS,
-        batch_time=N_STEPS,
+        batch_time=BATCH_TIME,
         seed=1,
         n_epochs=10,
         max_grad_norm=1,

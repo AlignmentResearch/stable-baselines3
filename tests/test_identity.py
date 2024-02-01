@@ -70,7 +70,7 @@ DIM = 4
 def test_discrete(model_class, env):
     env_ = DummyVecEnv([lambda: env])
     kwargs: dict[str, Any] = {}
-    n_steps = 10000
+    total_n_steps = 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
@@ -80,8 +80,10 @@ def test_discrete(model_class, env):
     if model_class == RecurrentPPO:
         # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
+        kwargs["batch_time"] = 4
+        kwargs["n_steps"] = 128
 
-    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
+    model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(total_n_steps)
 
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
     obs, _ = env.reset()
@@ -93,7 +95,7 @@ def test_discrete(model_class, env):
 def test_continuous(model_class):
     env = IdentityEnvBox(eps=0.5)
 
-    n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
+    total_n_steps = 2000 if issubclass(model_class, OnPolicyAlgorithm) else 400
 
     kwargs: dict[str, Any] = dict(policy_kwargs=dict(net_arch=[64, 64]), seed=0, gamma=0.95)
 
@@ -109,6 +111,6 @@ def test_continuous(model_class):
         # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"]["net_arch"] = dict(vf=[], pi=[])
 
-    model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(n_steps)
+    model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(total_n_steps)
 
     evaluate_policy(model, env, n_eval_episodes=20, reward_threshold=90, warn=False)
