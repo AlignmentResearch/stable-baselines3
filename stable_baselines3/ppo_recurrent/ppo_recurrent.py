@@ -243,6 +243,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
 
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 
+    @th.no_grad()
     def collect_rollouts(  # type: ignore[override]
         self,
         env: VecEnv,
@@ -351,10 +352,9 @@ class RecurrentPPO(OnPolicyAlgorithm):
             self._last_episode_starts = dones.to(self.device)
             self._last_lstm_states = lstm_states
 
-        with th.no_grad():
-            # Compute value for the last timestep
-            dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
-            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
+        # Compute value for the last timestep
+        dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
+        values = self.policy.predict_values(obs_as_tensor(new_obs, self.device), lstm_states, episode_starts)
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
