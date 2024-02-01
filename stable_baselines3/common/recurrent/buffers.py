@@ -139,7 +139,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         )
 
         tree_map(
-            lambda buf, x: buf[self.pos].copy_(x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1), non_blocking=True),
+            lambda buf, x: buf[self.pos].copy_((x if x.ndim + 1 == buf.ndim else x.unsqueeze(-1)).detach(), non_blocking=True),
             self.data,
             new_data,
         )
