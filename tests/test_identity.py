@@ -72,7 +72,7 @@ DIM = 4
 def test_discrete(model_class, env_fn):
     # Use multiple envs so we can test that batching works correctly
     env_ = DummyVecEnv([env_fn] * 4)
-    kwargs: dict[str, Any] = dict(n_epochs=30)
+    kwargs: dict[str, Any] = dict()
     total_n_steps = 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
@@ -82,6 +82,8 @@ def test_discrete(model_class, env_fn):
 
     if model_class in (RecurrentPPO, PPO):
         kwargs["target_kl"] = 0.02
+        kwargs["n_epochs"] = 30
+
     if model_class == RecurrentPPO:
         # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
