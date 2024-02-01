@@ -283,6 +283,7 @@ def test_ppo_lstm_performance(policy: str | type[BaseRecurrentActorCriticPolicy]
         learning_rate=0.0007,
         verbose=1,
         batch_envs=N_ENVS,
+        batch_time=N_STEPS,
         seed=1,
         n_epochs=10,
         max_grad_norm=1,

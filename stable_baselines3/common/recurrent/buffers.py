@@ -156,20 +156,21 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         assert self.full, "Rollout buffer must be full before sampling from it"
         if batch_envs >= self.n_envs:
             for time_start in range(0, self.buffer_size, batch_time):
-                yield self._get_samples(slice(None), slice(time_start, time_start + batch_time))
+                yield self._get_samples(seq_inds=slice(time_start, time_start + batch_time), batch_inds=slice(None))
 
         else:
             env_indices = th.randperm(self.n_envs)
-            for time_start in range(0, self.buffer_size, batch_time):
-                for env_start in range(0, self.n_envs, batch_envs):
+            for env_start in range(0, self.n_envs, batch_envs):
+                for time_start in range(0, self.buffer_size, batch_time):
                     yield self._get_samples(
-                        env_indices[env_start : env_start + batch_envs], slice(time_start, time_start + batch_time)
+                        seq_inds=slice(time_start, time_start + batch_time),
+                        batch_inds=env_indices[env_start : env_start + batch_envs],
                     )
 
     def _get_samples(  # type: ignore[override]
         self,
-        batch_inds: Union[slice, th.Tensor],
         seq_inds: slice,
+        batch_inds: Union[slice, th.Tensor],
     ) -> RecurrentRolloutBufferSamples:
         idx = (seq_inds, batch_inds)
         # hidden_states: time, n_layers, batch
