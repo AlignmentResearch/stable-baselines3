@@ -66,27 +66,33 @@ DIM = 4
 
 
 @pytest.mark.parametrize("model_class", [A2C, PPO, DQN, RecurrentPPO])
-@pytest.mark.parametrize("env", [IdentityEnv(DIM), IdentityEnvMultiDiscrete(DIM), IdentityEnvMultiBinary(DIM)])
-def test_discrete(model_class, env):
-    env_ = DummyVecEnv([lambda: env])
-    kwargs: dict[str, Any] = {}
+@pytest.mark.parametrize(
+    "env_fn", [lambda: IdentityEnv(DIM), lambda: IdentityEnvMultiDiscrete(DIM), lambda: IdentityEnvMultiBinary(DIM)]
+)
+def test_discrete(model_class, env_fn):
+    # Use multiple envs so we can test that batching works correctly
+    env_ = DummyVecEnv([env_fn] * 4)
+    kwargs: dict[str, Any] = dict(n_epochs=30)
     total_n_steps = 10000
     if model_class == DQN:
         kwargs = dict(learning_starts=0)
         # DQN only support discrete actions
-        if isinstance(env, (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
+        if isinstance(env_.envs[0], (IdentityEnvMultiDiscrete, IdentityEnvMultiBinary)):
             return
 
+    if model_class in (RecurrentPPO, PPO):
+        kwargs["target_kl"] = 0.02
     if model_class == RecurrentPPO:
         # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
-        kwargs["batch_time"] = 4
-        kwargs["n_steps"] = 128
+        kwargs["batch_time"] = 128
+        kwargs["batch_envs"] = 4
+        kwargs["n_steps"] = 256
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(total_n_steps)
 
     evaluate_policy(model, env_, n_eval_episodes=20, reward_threshold=99, warn=False)
-    obs, _ = env.reset()
+    obs, _ = env_.envs[0].reset()
 
     assert np.shape(model.predict(obs)[0]) == np.shape(obs)
 
