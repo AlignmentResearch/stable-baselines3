@@ -1,5 +1,6 @@
 import sys
 import time
+import warnings
 from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
 
 import numpy as np
@@ -105,8 +106,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
-        batch_time: int = 20,
         batch_envs: int = 128,
+        batch_time: Optional[int] = None,
         n_epochs: int = 10,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -153,6 +154,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 spaces.MultiBinary,
             ),
         )
+        if batch_time is None:
+            batch_time = self.n_steps
         # Sanity check, otherwise it will lead to noisy gradient and NaN
         # because of the advantage normalization
         if normalize_advantage:
@@ -163,10 +166,32 @@ class RecurrentPPO(OnPolicyAlgorithm):
         if self.env is not None:
             # Check that `n_steps * n_envs > 1` to avoid NaN
             # when doing advantage normalization
-            buffer_size = self.env.num_envs * self.n_steps
-            assert buffer_size > 1 or (
-                not normalize_advantage
+            num_envs = self.env.num_envs
+            assert (
+                num_envs > 1 or batch_time > 1 or (not normalize_advantage)
             ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
+            # Check that the rollout buffer size is a multiple of the mini-batch size
+            if (truncated_batch_size := num_envs % batch_envs) > 0:
+                untruncated_batches = num_envs // batch_envs
+                warnings.warn(
+                    f"You have specified a environment mini-batch size of {batch_envs},"
+                    f" but because the `RecurrentRolloutBuffer` has `n_envs = {self.env.num_envs}`,"
+                    f" after every {untruncated_batches} untruncated mini-batches,"
+                    f" there will be a truncated mini-batch of size {truncated_batch_size}\n"
+                    f"We recommend using a `batch_envs` that is a factor of `n_envs`.\n"
+                    f"Info: (n_envs={self.env.num_envs})"
+                )
+
+            if (truncated_batch_size := self.n_steps % batch_time) > 0:
+                untruncated_batches = self.n_steps // batch_time
+                warnings.warn(
+                    f"You have specified a time mini-batch size of {batch_time},"
+                    f" but because the `RecurrentRolloutBuffer` has `n_steps = {self.n_steps}`,"
+                    f" after every {untruncated_batches} untruncated mini-batches,"
+                    f" there will be a truncated mini-batch of size {truncated_batch_size}\n"
+                    f"We recommend using a `batch_time` that is a factor of `n_steps`.\n"
+                    f"Info: (n_envs={self.n_steps})"
+                )
 
         self.batch_envs = batch_envs
         self.batch_time = batch_time

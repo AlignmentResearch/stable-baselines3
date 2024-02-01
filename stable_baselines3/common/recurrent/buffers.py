@@ -134,7 +134,8 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         :param hidden_states: Hidden state of the RNN
         """
         new_data = dataclasses.replace(
-            data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
+            data,
+            actions=data.actions.reshape((self.n_envs, self.action_dim)),  # type: ignore[misc]
         )
 
         tree_map(
@@ -155,13 +156,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         # Return everything, don't create minibatches
         if batch_shape is None:
             batch_shape = (self.buffer_size, self.n_envs)
-
         batch_time, batch_envs = batch_shape
-
-        if self.buffer_size % batch_time != 0:
-            raise ValueError(f"batch_size[0] must evenly divide sequence length, but {batch_time=} and {self.buffer_size=}")
-        if self.n_envs % batch_envs != 0:
-            raise ValueError(f"batch_size[1] must evenly divide n_envs, but {batch_envs=} and {self.n_envs=}")
 
         if batch_envs >= self.n_envs:
             for time_start in range(0, self.buffer_size, batch_time):
