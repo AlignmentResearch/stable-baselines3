@@ -354,7 +354,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             self._last_episode_starts = dones.to(self.device)
             self._last_lstm_states = lstm_states
 
-        self.logger.record("train/reward", n_steps)
+        self.logger.record("train/reward", reward_average)
 
         # Compute value for the last timestep
         dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
