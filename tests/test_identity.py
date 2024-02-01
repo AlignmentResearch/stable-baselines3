@@ -78,6 +78,7 @@ def test_discrete(model_class, env):
             return
 
     if model_class == RecurrentPPO:
+        # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"] = dict(net_arch=dict(vf=[], pi=[]))
 
     model = model_class("MlpPolicy", env_, gamma=0.4, seed=3, **kwargs).learn(n_steps)
@@ -105,6 +106,7 @@ def test_continuous(model_class):
     elif model_class == PPO:
         kwargs = dict(n_steps=512, n_epochs=5)
     elif model_class == RecurrentPPO:
+        # Ensure that there's not an MLP on top of the LSTM that the default Policy creates.
         kwargs["policy_kwargs"]["net_arch"] = dict(vf=[], pi=[])
 
     model = model_class("MlpPolicy", env, learning_rate=1e-3, **kwargs).learn(n_steps)

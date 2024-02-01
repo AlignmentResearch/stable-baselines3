@@ -641,7 +641,7 @@ class BaseAlgorithm(ABC):
                 # Catch anything for now.
                 raise ValueError(f"Key {name} is an invalid object name.") from e
 
-            # Undo compilation
+            # Undo Pytorch compilation, in case the saved model was compiled
             state_dict = {k.replace("._orig_mod", ""): v for (k, v) in check_cast(dict, params[name]).items()}
 
             if isinstance(attr, th.optim.Optimizer):
