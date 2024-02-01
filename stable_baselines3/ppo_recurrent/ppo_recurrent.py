@@ -386,7 +386,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # train for n_epochs epochs
         for epoch in range(self.n_epochs):
             # Do a complete pass on the rollout buffer
-            for rollout_data in self.rollout_buffer.get(batch_shape=(self.batch_time, self.batch_envs)):
+            for rollout_data in self.rollout_buffer.get(batch_time=self.batch_time, batch_envs=self.batch_envs):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
                     actions = rollout_data.actions.squeeze(-1)

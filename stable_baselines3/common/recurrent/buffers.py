@@ -149,15 +149,11 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             self.full = True
 
     def get(  # type: ignore[override]
-        self, batch_shape: Optional[tuple[int, int]] = None
+        self,
+        batch_time: int,
+        batch_envs: int,
     ) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
-
-        # Return everything, don't create minibatches
-        if batch_shape is None:
-            batch_shape = (self.buffer_size, self.n_envs)
-        batch_time, batch_envs = batch_shape
-
         if batch_envs >= self.n_envs:
             for time_start in range(0, self.buffer_size, batch_time):
                 yield self._get_samples(slice(None), slice(time_start, time_start + batch_time))

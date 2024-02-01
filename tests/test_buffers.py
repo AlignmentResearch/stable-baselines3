@@ -172,7 +172,7 @@ def test_device_buffer(replay_buffer_cls, device):
     elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
         data = [buffer.sample(50)]
     elif replay_buffer_cls == RecurrentRolloutBuffer:
-        data = buffer.get(EP_LENGTH)
+        data = buffer.get(batch_envs=env.num_envs // 2, batch_time=EP_LENGTH // 2)
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type
