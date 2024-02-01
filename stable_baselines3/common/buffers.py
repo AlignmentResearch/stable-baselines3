@@ -287,22 +287,22 @@ class ReplayBuffer(BaseBuffer):
 
         # Copy to avoid modification by reference
         assert isinstance(self.observations, th.Tensor)
-        self.observations[self.pos].copy_(obs.detach(), non_blocking=True)
+        self.observations[self.pos].copy_(obs, non_blocking=True)
 
         if self.optimize_memory_usage:
-            self.observations[(self.pos + 1) % self.buffer_size].copy_(next_obs.detach(), non_blocking=True)
+            self.observations[(self.pos + 1) % self.buffer_size].copy_(next_obs, non_blocking=True)
         else:
             assert isinstance(self.next_observations, th.Tensor)
-            self.next_observations[self.pos].copy_(next_obs.detach(), non_blocking=True)
+            self.next_observations[self.pos].copy_(next_obs, non_blocking=True)
 
-        self.actions[self.pos].copy_(action.detach(), non_blocking=True)
-        self.rewards[self.pos].copy_(reward.detach(), non_blocking=True)
-        self.dones[self.pos].copy_(done.detach(), non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
                 self.timeouts[self.pos, i].copy_(
-                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze().detach(), non_blocking=True
+                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True
                 )
 
         self.pos += 1
@@ -498,12 +498,12 @@ class RolloutBuffer(BaseBuffer):
         action = action.reshape((self.n_envs, self.action_dim))
 
         assert isinstance(self.observations, th.Tensor)
-        self.observations[self.pos].copy_(obs.detach(), non_blocking=True)
-        self.actions[self.pos].copy_(action.detach(), non_blocking=True)
-        self.rewards[self.pos].copy_(reward.detach(), non_blocking=True)
-        self.episode_starts[self.pos].copy_(episode_start.detach(), non_blocking=True)
-        self.values[self.pos].copy_(value.flatten().detach(), non_blocking=True)
-        self.log_probs[self.pos].copy_(log_prob.detach(), non_blocking=True)
+        self.observations[self.pos].copy_(obs, non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -670,24 +670,24 @@ class DictReplayBuffer(ReplayBuffer):
             # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs[key] = obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos].copy_(obs[key].detach(), non_blocking=True)
+            self.observations[key][self.pos].copy_(obs[key], non_blocking=True)
 
         for key in self.next_observations.keys():
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 next_obs[key] = next_obs[key].reshape((self.n_envs,) + self.obs_shape[key])
-            self.next_observations[key][self.pos].copy_(next_obs[key].detach(), non_blocking=True)
+            self.next_observations[key][self.pos].copy_(next_obs[key], non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos].copy_(th.as_tensor(action).detach(), non_blocking=True)
-        self.rewards[self.pos].copy_(reward.detach(), non_blocking=True)
-        self.dones[self.pos].copy_(done.detach(), non_blocking=True)
+        self.actions[self.pos].copy_(th.as_tensor(action), non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.dones[self.pos].copy_(done, non_blocking=True)
 
         if self.handle_timeout_termination:
             for i, info in enumerate(infos):
                 self.timeouts[self.pos, i].copy_(
-                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze().detach(), non_blocking=True
+                    th.as_tensor(info.get("TimeLimit.truncated", False)).squeeze(), non_blocking=True
                 )
 
         self.pos += 1
@@ -848,16 +848,16 @@ class DictRolloutBuffer(RolloutBuffer):
             # as torch cannot broadcast (n_discrete,) to (n_discrete, 1)
             if isinstance(self.observation_space.spaces[key], spaces.Discrete):
                 obs_ = obs_.reshape((self.n_envs,) + self.obs_shape[key])
-            self.observations[key][self.pos].copy_(obs_.detach(), non_blocking=True)
+            self.observations[key][self.pos].copy_(obs_, non_blocking=True)
 
         # Reshape to handle multi-dim and discrete action spaces, see GH #970 #1392
         action = action.reshape((self.n_envs, self.action_dim))
 
-        self.actions[self.pos].copy_(action.detach(), non_blocking=True)
-        self.rewards[self.pos].copy_(reward.detach(), non_blocking=True)
-        self.episode_starts[self.pos].copy_(episode_start.detach(), non_blocking=True)
-        self.values[self.pos].copy_(value.flatten().detach(), non_blocking=True)
-        self.log_probs[self.pos].copy_(log_prob.detach(), non_blocking=True)
+        self.actions[self.pos].copy_(action, non_blocking=True)
+        self.rewards[self.pos].copy_(reward, non_blocking=True)
+        self.episode_starts[self.pos].copy_(episode_start, non_blocking=True)
+        self.values[self.pos].copy_(value.flatten(), non_blocking=True)
+        self.log_probs[self.pos].copy_(log_prob, non_blocking=True)
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
