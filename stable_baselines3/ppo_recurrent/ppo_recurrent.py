@@ -472,8 +472,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # Clip grad norm
                 th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
                 self.policy.optimizer.step()
-                self._n_updates += 1
-
+            self._n_updates += 1
             if not continue_training:
                 break
         self.policy.optimizer.zero_grad(set_to_none=True)  # Free gradients until the next call to .train()
