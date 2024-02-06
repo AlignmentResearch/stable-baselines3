@@ -37,6 +37,7 @@ class IdentityEnv(gym.Env, Generic[T]):
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[T, Dict]:
         if seed is not None:
             super().reset(seed=seed)
+            self.action_space.seed(seed=seed + 1)
         self.current_step = 0
         self.num_resets += 1
         self._choose_next_state()

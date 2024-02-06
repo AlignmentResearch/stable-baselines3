@@ -182,7 +182,9 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                     # Otherwise, clip the actions to avoid out of bound error
                     # as we are sampling from an unbounded Gaussian distribution
                     clipped_actions = th.clip(
-                        actions, th.as_tensor(self.action_space.low), th.as_tensor(self.action_space.high)
+                        actions,
+                        th.as_tensor(self.action_space.low).to(actions),
+                        th.as_tensor(self.action_space.high).to(actions),
                     )
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
@@ -227,6 +229,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         with th.no_grad():
             # Compute value for the last timestep
+            dones = episode_starts = th.as_tensor(dones).to(dtype=th.bool, device=self.device)
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
