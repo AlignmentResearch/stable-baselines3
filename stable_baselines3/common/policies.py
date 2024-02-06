@@ -613,9 +613,14 @@ class ActorCriticPolicy(BasePolicy):
 
     @property
     def optimizer(self) -> th.optim.Optimizer:
-        """
-        Create optimizer with the default learning rate. We defer its creation to allow for moving the policy and its
-        parameters to the GPU.
+        """Create optimizer with the default learning rate. We defer its creation to allow for moving the policy and
+        its parameters to the GPU.
+
+        Previously the optimizer was created during model initialization, which is always on the default device (usually
+        CPU). The policy is moved to GPU afterwards, in methods derived from BaseAlgorithm._setup_model (e.g.
+        OnPolicyAlgorithm._setup_model).
+
+        The optimizer attribute is then only accessed later on, when learning starts.
         """
         try:
             return self._optimizer
