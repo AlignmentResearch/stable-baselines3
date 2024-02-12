@@ -169,7 +169,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             num_envs = self.env.num_envs
             assert (
                 num_envs > 1 or batch_time > 1 or (not normalize_advantage)
-            ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
+            ), f"`num_envs` or `batch_time` must be greater than 1. Currently num_envs={num_envs} and batch_time={batch_time}"
             # Check that the rollout buffer size is a multiple of the mini-batch size
             if (truncated_batch_size := num_envs % batch_envs) > 0:
                 untruncated_batches = num_envs // batch_envs
