@@ -174,7 +174,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
     ) -> RecurrentRolloutBufferSamples:
         idx = (seq_inds, batch_inds)
         # hidden_states: time, n_layers, batch
-        first_hidden_state_idx = (range(seq_inds.start, seq_inds.stop, 1)[0], slice(None), batch_inds)
+        first_hidden_state_idx = (seq_inds.start, slice(None), batch_inds)
 
         return RecurrentRolloutBufferSamples(
             observations=tree_index(self.data.observations, idx),
