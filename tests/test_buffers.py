@@ -127,8 +127,9 @@ HIDDEN_STATES_EXAMPLE = {"a": {"b": th.zeros(2, 4)}}
 @pytest.mark.parametrize(
     "replay_buffer_cls", [DictReplayBuffer, DictRolloutBuffer, ReplayBuffer, RolloutBuffer, RecurrentRolloutBuffer]
 )
+@pytest.mark.parametrize("n_envs", [1, 4])
 @pytest.mark.parametrize("device", ["cpu", "cuda", "auto"])
-def test_device_buffer(replay_buffer_cls, device):
+def test_device_buffer(replay_buffer_cls, n_envs, device):
     if device == "cuda" and not th.cuda.is_available():
         pytest.skip("CUDA not available")
 
@@ -139,40 +140,47 @@ def test_device_buffer(replay_buffer_cls, device):
         DictReplayBuffer: DummyDictEnv,
         RecurrentRolloutBuffer: DummyDictEnv,
     }[replay_buffer_cls]
-    env = make_vec_env(env)
+    env = make_vec_env(env, n_envs=n_envs)
     hidden_states_shape = HIDDEN_STATES_EXAMPLE["a"]["b"].shape
     N_ENVS_HIDDEN_STATES = {"a": {"b": th.zeros((hidden_states_shape[0], env.num_envs, *hidden_states_shape[1:]))}}
 
     if replay_buffer_cls == RecurrentRolloutBuffer:
         buffer = RecurrentRolloutBuffer(
-            EP_LENGTH, env.observation_space, env.action_space, hidden_state_example=N_ENVS_HIDDEN_STATES, device=device
+            EP_LENGTH,
+            env.observation_space,
+            env.action_space,
+            hidden_state_example=N_ENVS_HIDDEN_STATES,
+            device=device,
+            n_envs=n_envs,
         )
     else:
-        buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device)
+        buffer = replay_buffer_cls(EP_LENGTH, env.observation_space, env.action_space, device=device, n_envs=n_envs)
 
     # Interract and store transitions
     obs = env.reset()
+    episode_start, values, log_prob = th.zeros(n_envs), th.zeros(n_envs), th.ones(n_envs)
+
     for _ in range(EP_LENGTH):
-        action = th.as_tensor(env.action_space.sample())
+        action = th.as_tensor([env.action_space.sample() for _ in range(n_envs)])
 
         next_obs, reward, done, info = env.step(action)
         if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-            episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(obs, action, reward, episode_start, values, log_prob)
         elif replay_buffer_cls == RecurrentRolloutBuffer:
-            episode_start, values, log_prob = th.zeros(1), th.zeros(1), th.ones(1)
             buffer.add(RecurrentRolloutBufferData(obs, action, reward, episode_start, values, log_prob, N_ENVS_HIDDEN_STATES))
         else:
             buffer.add(obs, next_obs, action, reward, done, info)
         obs = next_obs
 
     # Get data from the buffer
+    batch_envs = max(1, env.num_envs // 2)
+    batch_time = EP_LENGTH // 2
     if replay_buffer_cls in [RolloutBuffer, DictRolloutBuffer]:
-        data = buffer.get(50)
+        data = buffer.get(batch_time)
     elif replay_buffer_cls in [ReplayBuffer, DictReplayBuffer]:
-        data = [buffer.sample(50)]
+        data = [buffer.sample(batch_time)]
     elif replay_buffer_cls == RecurrentRolloutBuffer:
-        data = buffer.get(EP_LENGTH)
+        data = buffer.get(batch_envs=batch_envs, batch_time=batch_time)
 
     # Check that all data are on the desired device
     desired_device = get_device(device).type
@@ -182,3 +190,12 @@ def test_device_buffer(replay_buffer_cls, device):
         for value in flattened_tensors:
             assert isinstance(value, th.Tensor)
             assert value.device.type == desired_device
+
+        # Check that data are of the desired shape
+        if isinstance(minibatch, (ReplayBufferSamples, DictReplayBufferSamples)):
+            assert minibatch.rewards.shape == (batch_time, 1)
+        else:
+            if replay_buffer_cls == RecurrentRolloutBuffer:
+                assert minibatch.old_log_prob.shape == (batch_time, batch_envs)
+            else:
+                assert minibatch.old_log_prob.shape == (batch_time,)

@@ -106,7 +106,8 @@ class RecurrentPPO(OnPolicyAlgorithm):
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
-        batch_size: int = 128,
+        batch_envs: int = 128,
+        batch_time: Optional[int] = None,
         n_epochs: int = 10,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -153,32 +154,47 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 spaces.MultiBinary,
             ),
         )
+        if batch_time is None:
+            batch_time = self.n_steps
         # Sanity check, otherwise it will lead to noisy gradient and NaN
         # because of the advantage normalization
         if normalize_advantage:
             assert (
-                batch_size > 1
+                batch_envs * batch_time > 1
             ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
         if self.env is not None:
             # Check that `n_steps * n_envs > 1` to avoid NaN
             # when doing advantage normalization
-            buffer_size = self.env.num_envs * self.n_steps
-            assert buffer_size > 1 or (
-                not normalize_advantage
-            ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
+            num_envs = self.env.num_envs
+            assert (
+                num_envs > 1 or batch_time > 1 or (not normalize_advantage)
+            ), f"`num_envs` or `batch_time` must be greater than 1. Currently num_envs={num_envs} and batch_time={batch_time}"
             # Check that the rollout buffer size is a multiple of the mini-batch size
-            untruncated_batches = buffer_size // batch_size
-            if buffer_size % batch_size > 0:
+            if (truncated_batch_size := num_envs % batch_envs) > 0:
+                untruncated_batches = num_envs // batch_envs
                 warnings.warn(
-                    f"You have specified a mini-batch size of {batch_size},"
-                    f" but because the `RolloutBuffer` is of size `n_steps * n_envs = {buffer_size}`,"
+                    f"You have specified an environment mini-batch size of {batch_envs},"
+                    f" but because the `RecurrentRolloutBuffer` has `n_envs = {self.env.num_envs}`,"
                     f" after every {untruncated_batches} untruncated mini-batches,"
-                    f" there will be a truncated mini-batch of size {buffer_size % batch_size}\n"
-                    f"We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.\n"
-                    f"Info: (n_steps={self.n_steps} and n_envs={self.env.num_envs})"
+                    f" there will be a truncated mini-batch of size {truncated_batch_size}\n"
+                    f"We recommend using a `batch_envs` that is a factor of `n_envs`.\n"
+                    f"Info: (n_envs={self.env.num_envs})"
                 )
-        self.batch_size = batch_size
+
+            if (truncated_batch_size := self.n_steps % batch_time) > 0:
+                untruncated_batches = self.n_steps // batch_time
+                warnings.warn(
+                    f"You have specified a time mini-batch size of {batch_time},"
+                    f" but because the `RecurrentRolloutBuffer` has `n_steps = {self.n_steps}`,"
+                    f" after every {untruncated_batches} untruncated mini-batches,"
+                    f" there will be a truncated mini-batch of size {truncated_batch_size}\n"
+                    f"We recommend using a `batch_time` that is a factor of `n_steps`.\n"
+                    f"Info: (n_envs={self.n_steps})"
+                )
+
+        self.batch_envs = batch_envs
+        self.batch_time = batch_time
         self.n_epochs = n_epochs
         self.clip_range: Schedule = clip_range  # type: ignore
         self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
@@ -217,9 +233,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
         )
-        self._last_lstm_states = tree_map(  # type: ignore
-            lambda x: x[0].clone().contiguous(), self.rollout_buffer.data.hidden_states
-        )
+        self._last_lstm_states = tree_map(lambda x: th.zeros_like(x, memory_format=th.contiguous_format), hidden_state_example)
 
         # Initialize schedules for policy/value clipping
         self.clip_range = get_schedule_fn(self.clip_range)
@@ -372,14 +386,14 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # train for n_epochs epochs
         for epoch in range(self.n_epochs):
             # Do a complete pass on the rollout buffer
-            for rollout_data in self.rollout_buffer.get(self.batch_size):
+            for rollout_data in self.rollout_buffer.get(batch_time=self.batch_time, batch_envs=self.batch_envs):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
                     actions = rollout_data.actions.squeeze(-1)
 
                 # Re-sample the noise matrix because the log_std has changed
                 if self.use_sde:
-                    self.policy.reset_noise(self.batch_size)
+                    self.policy.reset_noise(self.batch_envs * self.batch_time)
 
                 values, log_prob, entropy = self.policy.evaluate_actions(
                     rollout_data.observations,  # type: ignore[arg-type]

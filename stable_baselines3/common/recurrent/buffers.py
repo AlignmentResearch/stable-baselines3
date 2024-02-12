@@ -134,7 +134,8 @@ class RecurrentRolloutBuffer(RolloutBuffer):
         :param hidden_states: Hidden state of the RNN
         """
         new_data = dataclasses.replace(
-            data, actions=data.actions.reshape((self.n_envs, self.action_dim))  # type: ignore[misc]
+            data,
+            actions=data.actions.reshape((self.n_envs, self.action_dim)),  # type: ignore[misc]
         )
 
         tree_map(
@@ -148,34 +149,32 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             self.full = True
 
     def get(  # type: ignore[override]
-        self, batch_size: Optional[int] = None
+        self,
+        batch_time: int,
+        batch_envs: int,
     ) -> Generator[RecurrentRolloutBufferSamples, None, None]:
         assert self.full, "Rollout buffer must be full before sampling from it"
+        if batch_envs >= self.n_envs:
+            for time_start in range(0, self.buffer_size, batch_time):
+                yield self._get_samples(seq_inds=slice(time_start, time_start + batch_time), batch_inds=slice(None))
 
-        # Return everything, don't create minibatches
-        if batch_size is None:
-            batch_size = self.buffer_size * self.n_envs
-
-        if batch_size % self.buffer_size != 0:
-            raise ValueError(f"Batch size must be divisible by sequence length, but {batch_size=} and len={self.buffer_size}")
-
-        indices = th.randperm(self.n_envs)
-        adjusted_batch_size = batch_size // self.buffer_size
-
-        if adjusted_batch_size >= self.n_envs:
-            yield self._get_samples(slice(None))
-
-        start_idx = 0
-        while start_idx < self.n_envs:
-            yield self._get_samples(indices[start_idx : start_idx + adjusted_batch_size])
-            start_idx += adjusted_batch_size
+        else:
+            env_indices = th.randperm(self.n_envs)
+            for env_start in range(0, self.n_envs, batch_envs):
+                for time_start in range(0, self.buffer_size, batch_time):
+                    yield self._get_samples(
+                        seq_inds=slice(time_start, time_start + batch_time),
+                        batch_inds=env_indices[env_start : env_start + batch_envs],
+                    )
 
     def _get_samples(  # type: ignore[override]
         self,
+        seq_inds: slice,
         batch_inds: Union[slice, th.Tensor],
     ) -> RecurrentRolloutBufferSamples:
-        idx = (slice(None), batch_inds)
-        hidden_states_idx = (0, slice(None), batch_inds)
+        idx = (seq_inds, batch_inds)
+        # hidden_states: time, n_layers, batch
+        first_hidden_state_idx = (seq_inds.start, slice(None), batch_inds)
 
         return RecurrentRolloutBufferSamples(
             observations=tree_index(self.data.observations, idx),
@@ -184,7 +183,7 @@ class RecurrentRolloutBuffer(RolloutBuffer):
             old_log_prob=self.data.log_probs[idx],
             advantages=self.advantages[idx],
             returns=self.returns[idx],
-            hidden_states=tree_index(self.data.hidden_states, hidden_states_idx),  # Return only the first hidden state
+            hidden_states=tree_index(self.data.hidden_states, first_hidden_state_idx),
             episode_starts=self.data.episode_starts[idx],
         )
 

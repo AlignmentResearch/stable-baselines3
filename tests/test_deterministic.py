@@ -27,7 +27,7 @@ def test_deterministic_training_common(algo):
             kwargs.update({"n_steps": 64, "n_epochs": 4})
         elif algo == RecurrentPPO:
             kwargs.update({"policy_kwargs": dict(net_arch=[], enable_critic_lstm=True, lstm_hidden_size=8)})
-            kwargs.update({"n_steps": 50, "n_epochs": 4, "batch_size": 100})
+            kwargs.update({"n_steps": 50, "n_epochs": 4, "batch_time": 25, "batch_envs": 1})
 
     policy_str = "MlpLstmPolicy" if algo == RecurrentPPO else "MlpPolicy"
     for i in range(2):
