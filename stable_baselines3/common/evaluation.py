@@ -4,14 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import gymnasium as gym
 import numpy as np
 import torch as th
-
 from stable_baselines3.common import type_aliases
-from stable_baselines3.common.vec_env import (
-    DummyVecEnv,
-    VecEnv,
-    VecMonitor,
-    is_vecenv_wrapped,
-)
+from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
 from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 
@@ -98,6 +92,8 @@ def evaluate_policy(
     episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=model.device)
     while (episode_counts < episode_count_targets).any():
         with th.no_grad():
+            if model.steps_to_think > 0:
+                states = model.think_for_n_steps(observations, states, episode_starts)
             actions, states = model.predict(
                 observations,  # type: ignore[arg-type]
                 state=states,
