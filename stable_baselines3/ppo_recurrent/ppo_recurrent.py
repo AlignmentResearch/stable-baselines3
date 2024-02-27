@@ -13,13 +13,9 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.pytree_dataclass import tree_index, tree_map
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
-from stable_baselines3.common.recurrent.policies import (
-    BaseRecurrentActorCriticPolicy,
-)
+from stable_baselines3.common.recurrent.policies import BaseRecurrentActorCriticPolicy
 from stable_baselines3.common.recurrent.torch_layers import RecurrentState
-from stable_baselines3.common.recurrent.type_aliases import (
-    RecurrentRolloutBufferData,
-)
+from stable_baselines3.common.recurrent.type_aliases import RecurrentRolloutBufferData
 from stable_baselines3.common.type_aliases import (
     GymEnv,
     MaybeCallback,
@@ -86,7 +82,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
     :param device: Device (cpu, cuda, ...) on which the code should be run.
         Setting it to auto, the code will be run on the GPU if possible.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
-    :param steps_to_think: The number of extra policy steps (forward passes) to perform at the start of the episode.
     """
 
     policy_aliases: ClassVar[Dict[str, Type[BasePolicy]]] = {
@@ -129,7 +124,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
-        steps_to_think: int = 0,
     ):
         super().__init__(
             policy,
@@ -204,7 +198,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
         self._last_lstm_states: Optional[RecurrentState] = None
-        self.steps_to_think = steps_to_think
 
         if _init_setup_model:
             self._setup_model()
@@ -316,7 +309,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 episode_starts = non_null(self._last_episode_starts)
-                lstm_states = self.think_for_n_steps(self.steps_to_think, obs_tensor, lstm_states, episode_starts)
                 actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
 
             # Rescale and perform action
