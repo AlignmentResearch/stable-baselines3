@@ -214,13 +214,22 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         # ignore because TorchGymObs and TensorTree do not match
         obs_for_start_envs: TorchGymObs = tree_index(obs_tensor, (episode_starts,))  # type: ignore[type-var]
         lstm_states_for_start_envs = tree_index(lstm_states, (slice(None), episode_starts))
-        for _ in range(n_steps):
+
+        reset_all = th.ones(int(episode_starts.sum().item()), device=self.device, dtype=th.bool)
+        do_not_reset = ~reset_all
+        for step_i in range(n_steps):
             _, _, _, lstm_states_for_start_envs = self.policy.forward(
                 obs_for_start_envs,
                 lstm_states_for_start_envs,
-                episode_starts[episode_starts],
+                reset_all if step_i == 0 else do_not_reset,
             )
-        lstm_states = tree_map(lambda x, y: x[episode_starts].copy_(y), lstm_states, lstm_states_for_start_envs)
+
+        def _set_thinking(x, y) -> th.Tensor:
+            x = x.clone()  # Don't overwrite previous tensor
+            x[:, episode_starts] = y
+            return x
+
+        lstm_states = tree_map(_set_thinking, lstm_states, lstm_states_for_start_envs)
         return lstm_states
 
     def _setup_model(self) -> None:
