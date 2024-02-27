@@ -442,8 +442,8 @@ class EvalCallback(EventCallback):
 
     def _evaluate_policy(
         self,
-    ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:  # pytype: disable=bad-return-type
-        return evaluate_policy(
+    ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
+        return evaluate_policy(  # pytype: disable=bad-return-type
             self.model,
             self.eval_env,
             n_eval_episodes=self.n_eval_episodes,
