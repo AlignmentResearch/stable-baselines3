@@ -213,7 +213,7 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
             return lstm_states
         # ignore because TorchGymObs and TensorTree do not match
         obs_for_start_envs: TorchGymObs = tree_index(obs_tensor, (episode_starts,))  # type: ignore[type-var]
-        lstm_states_for_start_envs = tree_index(lstm_states, (episode_starts,))
+        lstm_states_for_start_envs = tree_index(lstm_states, (slice(None), episode_starts))
         for _ in range(n_steps):
             _, _, _, lstm_states_for_start_envs = self.policy.forward(
                 obs_for_start_envs,
