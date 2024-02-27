@@ -102,6 +102,9 @@ def evaluate_policy(
         with th.no_grad():
             if hasattr(model, "think_for_n_steps"):
                 states = model.think_for_n_steps(n_steps_to_think, observations, states, episode_starts)
+            else:
+                if n_steps_to_think > 0:
+                    raise TypeError(f"Policy {model} cannot think for longer than 0 steps.")
             actions, states = model.predict(
                 observations,  # type: ignore[arg-type]
                 state=states,
