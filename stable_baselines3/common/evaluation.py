@@ -4,8 +4,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import gymnasium as gym
 import numpy as np
 import torch as th
+
 from stable_baselines3.common import type_aliases
-from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    VecEnv,
+    VecMonitor,
+    is_vecenv_wrapped,
+)
 from stable_baselines3.common.vec_env.util import obs_as_tensor
 
 
@@ -19,6 +25,7 @@ def evaluate_policy(
     reward_threshold: Optional[float] = None,
     return_episode_rewards: bool = False,
     warn: bool = True,
+    steps_to_think: Optional[int] = None,
 ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
     """
     Runs policy for ``n_eval_episodes`` episodes and returns average reward.
@@ -50,6 +57,8 @@ def evaluate_policy(
         per episode will be returned instead of the mean.
     :param warn: If True (default), warns user about lack of a Monitor wrapper in the
         evaluation environment.
+    :param steps_to_think: how many steps should the model think before taking the first action? If None, copy the
+        default from `model`.
     :return: Mean reward per episode, std of reward per episode.
         Returns ([float], [int]) when ``return_episode_rewards`` is True, first
         list containing per-episode rewards and second containing per-episode lengths
@@ -79,6 +88,10 @@ def evaluate_policy(
     observations = env.reset()
     observations = obs_as_tensor(observations, model.device)
 
+    if steps_to_think is None:
+        steps_to_think = getattr(model, "steps_to_think", 0)
+    assert steps_to_think is not None
+
     # Hardcode episode counts and the reward accumulators to use CPU. They're used for bookkeeping and don't involve
     # much computation.
 
@@ -92,8 +105,8 @@ def evaluate_policy(
     episode_starts = th.ones((env.num_envs,), dtype=th.bool, device=model.device)
     while (episode_counts < episode_count_targets).any():
         with th.no_grad():
-            if model.steps_to_think > 0:
-                states = model.think_for_n_steps(observations, states, episode_starts)
+            if hasattr(model, "think_for_n_steps"):
+                states = model.think_for_n_steps(steps_to_think, observations, states, episode_starts)
             actions, states = model.predict(
                 observations,  # type: ignore[arg-type]
                 state=states,

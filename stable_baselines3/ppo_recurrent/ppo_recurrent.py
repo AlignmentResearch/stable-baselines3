@@ -1,29 +1,49 @@
 import sys
 import time
 import warnings
-from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
+from typing import Any, ClassVar, Dict, Generic, Optional, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
 import torch.nn.functional as F
 from gymnasium import spaces
+
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.pytree_dataclass import tree_map
+from stable_baselines3.common.pytree_dataclass import tree_index, tree_map
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
-from stable_baselines3.common.recurrent.policies import BaseRecurrentActorCriticPolicy, RecurrentActorCriticPolicy
-from stable_baselines3.common.recurrent.type_aliases import ActorCriticStates, RecurrentRolloutBufferData
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule, non_null
-from stable_baselines3.common.utils import explained_variance, get_schedule_fn, safe_mean
+from stable_baselines3.common.recurrent.policies import (
+    BaseRecurrentActorCriticPolicy,
+)
+from stable_baselines3.common.recurrent.torch_layers import RecurrentState
+from stable_baselines3.common.recurrent.type_aliases import (
+    RecurrentRolloutBufferData,
+)
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    Schedule,
+    TorchGymObs,
+    non_null,
+)
+from stable_baselines3.common.utils import (
+    explained_variance,
+    get_schedule_fn,
+    safe_mean,
+)
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.vec_env.util import obs_as_tensor
-from stable_baselines3.ppo_recurrent.policies import CnnLstmPolicy, MlpLstmPolicy, MultiInputLstmPolicy
+from stable_baselines3.ppo_recurrent.policies import (
+    CnnLstmPolicy,
+    MlpLstmPolicy,
+    MultiInputLstmPolicy,
+)
 
 SelfRecurrentPPO = TypeVar("SelfRecurrentPPO", bound="RecurrentPPO")
 
 
-class RecurrentPPO(OnPolicyAlgorithm):
+class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
     """
     Proximal Policy Optimization algorithm (PPO) (clip version)
     with support for recurrent policies (LSTM).
@@ -78,13 +98,13 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "MultiInputPolicy": MultiInputLstmPolicy,
     }
 
-    policy: RecurrentActorCriticPolicy
-    policy_class: Type[RecurrentActorCriticPolicy]
+    policy: BaseRecurrentActorCriticPolicy[RecurrentState]
+    policy_class: Type[BaseRecurrentActorCriticPolicy[RecurrentState]]
     rollout_buffer: RecurrentRolloutBuffer
 
     def __init__(
         self,
-        policy: Union[str, Type[BaseRecurrentActorCriticPolicy]],
+        policy: Union[str, Type[BaseRecurrentActorCriticPolicy[RecurrentState]]],
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
@@ -183,27 +203,31 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
-        self._last_lstm_states: Optional[ActorCriticStates] = None
+        self._last_lstm_states: Optional[RecurrentState] = None
         self.steps_to_think = steps_to_think
 
         if _init_setup_model:
             self._setup_model()
 
-    def think_for_n_steps(self, obs_tensor, lstm_states, episode_starts):
+    def think_for_n_steps(
+        self, n_steps: int, obs_tensor: TorchGymObs, lstm_states: Optional[RecurrentState], episode_starts: th.Tensor
+    ) -> RecurrentState:
         if lstm_states is None:
-            lstm_states = self.policy.recurrent_initial_state(self.env.num_envs, device=self.device)
+            out = self.policy.recurrent_initial_state(episode_starts.size(0), device=self.device)
+            lstm_states = out
 
-        if not episode_starts.any():
+        if not episode_starts.any() or n_steps == 0:
             return lstm_states
-        obs_for_start_envs = obs_tensor[episode_starts, ...]
-        lstm_states_for_start_envs = lstm_states[episode_starts, ...]
-        for _ in range(self.steps_to_think):
+        # ignore because TorchGymObs and TensorTree do not match
+        obs_for_start_envs: TorchGymObs = tree_index(obs_tensor, (episode_starts,))  # type: ignore[type-var]
+        lstm_states_for_start_envs = tree_index(lstm_states, (episode_starts,))
+        for _ in range(n_steps):
             _, _, _, lstm_states_for_start_envs = self.policy.forward(
                 obs_for_start_envs,
                 lstm_states_for_start_envs,
                 episode_starts[episode_starts],
             )
-        lstm_states[episode_starts] = lstm_states_for_start_envs
+        lstm_states = tree_map(lambda x, y: x[episode_starts].copy_(y), lstm_states, lstm_states_for_start_envs)
         return lstm_states
 
     def _setup_model(self) -> None:
@@ -222,7 +246,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # if not isinstance(self.policy, RecurrentActorCriticPolicy):
         #     raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        hidden_state_example = self.policy.recurrent_initial_state(n_envs=self.n_envs, device=self.device)
+        hidden_state_example: RecurrentState = self.policy.recurrent_initial_state(n_envs=self.n_envs, device=self.device)
 
         self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,
@@ -292,8 +316,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 episode_starts = non_null(self._last_episode_starts)
-                if self.steps_to_think > 0:
-                    lstm_states = self.think_for_n_steps(obs_tensor, lstm_states, episode_starts)
+                lstm_states = self.think_for_n_steps(self.steps_to_think, obs_tensor, lstm_states, episode_starts)
                 actions, values, log_probs, lstm_states = self.policy.forward(obs_tensor, lstm_states, episode_starts)
 
             # Rescale and perform action

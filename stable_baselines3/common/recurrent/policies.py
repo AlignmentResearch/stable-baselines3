@@ -12,7 +12,6 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.preprocessing import preprocess_obs
 from stable_baselines3.common.pytree_dataclass import tree_flatten
 from stable_baselines3.common.recurrent.torch_layers import (
-    ExtractorInput,
     GRUNatureCNNExtractor,
     GRUWrappedFeaturesExtractor,
     LSTMFlattenExtractor,
@@ -189,7 +188,7 @@ class BaseRecurrentActorCriticPolicy(ActorCriticPolicy, Generic[RecurrentState])
         return actions, state
 
 
-class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
+class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy[ActorCriticStates[LSTMRecurrentState]]):
     """
     Recurrent policy class for actor-critic algorithms (has both policy and value prediction).
     To be used with A2C, PPO and the likes.
@@ -328,7 +327,9 @@ class RecurrentActorCriticPolicy(BaseRecurrentActorCriticPolicy):
             device=self.device,
         )
 
-    def recurrent_initial_state(self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None):
+    def recurrent_initial_state(
+        self, n_envs: Optional[int] = None, *, device: Optional[th.device | str] = None
+    ) -> ActorCriticStates[LSTMRecurrentState]:
         shape: tuple[int, ...]
         if n_envs is None:
             shape = (self.lstm_hidden_state_shape[0], self.lstm_hidden_state_shape[2])
@@ -628,8 +629,8 @@ class RecurrentMultiInputActorCriticPolicy(RecurrentActorCriticPolicy):
         )
 
 
-class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy, Generic[ExtractorInput, RecurrentState]):
-    features_extractor: RecurrentFeaturesExtractor[ExtractorInput, RecurrentState]
+class RecurrentFeaturesExtractorActorCriticPolicy(BaseRecurrentActorCriticPolicy[RecurrentState], Generic[RecurrentState]):
+    features_extractor: RecurrentFeaturesExtractor[TorchGymObs, RecurrentState]
 
     def __init__(
         self,
