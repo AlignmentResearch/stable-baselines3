@@ -7,7 +7,12 @@ from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.policies import (
+    ActorCriticCnnPolicy,
+    ActorCriticPolicy,
+    BasePolicy,
+    MultiInputActorCriticPolicy,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import explained_variance, get_schedule_fn
 
@@ -89,7 +94,7 @@ class PPO(OnPolicyAlgorithm):
         normalize_advantage: bool = True,
         ent_coef: float = 0.0,
         vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
+        max_grad_norm: Optional[float] = 0.5,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
         target_kl: Optional[float] = None,
@@ -271,7 +276,8 @@ class PPO(OnPolicyAlgorithm):
                 self.policy.optimizer.zero_grad()
                 loss.backward()
                 # Clip grad norm
-                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                if self.max_grad_norm is not None:
+                    th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
                 self.policy.optimizer.step()
 
             self._n_updates += 1

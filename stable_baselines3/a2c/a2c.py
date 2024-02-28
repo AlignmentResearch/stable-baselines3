@@ -5,7 +5,12 @@ from gymnasium import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.policies import (
+    ActorCriticCnnPolicy,
+    ActorCriticPolicy,
+    BasePolicy,
+    MultiInputActorCriticPolicy,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import explained_variance
 
@@ -70,7 +75,7 @@ class A2C(OnPolicyAlgorithm):
         gae_lambda: float = 1.0,
         ent_coef: float = 0.0,
         vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
+        max_grad_norm: Optional[float] = 0.5,
         rms_prop_eps: float = 1e-5,
         use_rms_prop: bool = True,
         use_sde: bool = False,
@@ -168,7 +173,8 @@ class A2C(OnPolicyAlgorithm):
             loss.backward()
 
             # Clip grad norm
-            th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+            if self.max_grad_norm is not None:
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
 
         explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
