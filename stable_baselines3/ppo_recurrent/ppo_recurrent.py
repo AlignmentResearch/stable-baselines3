@@ -113,7 +113,7 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         normalize_advantage: bool = True,
         ent_coef: float = 0.0,
         vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
+        max_grad_norm: Optional[float] = 0.5,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
         target_kl: Optional[float] = None,
@@ -496,7 +496,8 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
                 self.policy.optimizer.zero_grad()
                 loss.backward()
                 # Clip grad norm
-                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                if self.max_grad_norm is not None:
+                    th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
                 self.policy.optimizer.step()
             self._n_updates += 1
             if not continue_training:
