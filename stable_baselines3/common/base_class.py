@@ -133,6 +133,8 @@ class BaseAlgorithm(ABC):
     n_envs: int
     lr_schedule: Schedule
     _logger: Logger
+    _last_obs: Optional[TorchGymObsBasic]
+    _last_episode_starts: Optional[th.Tensor]
 
     def __init__(
         self,

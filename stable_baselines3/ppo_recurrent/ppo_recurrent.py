@@ -1,7 +1,7 @@
 import sys
 import time
 import warnings
-from typing import Any, ClassVar, Dict, Optional, Type, TypeVar, Union
+from typing import Any, ClassVar, Dict, Generic, Optional, Type, TypeVar, Union
 
 import numpy as np
 import torch as th
@@ -11,20 +11,16 @@ from gymnasium import spaces
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.pytree_dataclass import tree_map
+from stable_baselines3.common.pytree_dataclass import tree_index, tree_map
 from stable_baselines3.common.recurrent.buffers import RecurrentRolloutBuffer
-from stable_baselines3.common.recurrent.policies import (
-    BaseRecurrentActorCriticPolicy,
-    RecurrentActorCriticPolicy,
-)
-from stable_baselines3.common.recurrent.type_aliases import (
-    ActorCriticStates,
-    RecurrentRolloutBufferData,
-)
+from stable_baselines3.common.recurrent.policies import BaseRecurrentActorCriticPolicy
+from stable_baselines3.common.recurrent.torch_layers import RecurrentState
+from stable_baselines3.common.recurrent.type_aliases import RecurrentRolloutBufferData
 from stable_baselines3.common.type_aliases import (
     GymEnv,
     MaybeCallback,
     Schedule,
+    TorchGymObs,
     non_null,
 )
 from stable_baselines3.common.utils import (
@@ -43,7 +39,7 @@ from stable_baselines3.ppo_recurrent.policies import (
 SelfRecurrentPPO = TypeVar("SelfRecurrentPPO", bound="RecurrentPPO")
 
 
-class RecurrentPPO(OnPolicyAlgorithm):
+class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
     """
     Proximal Policy Optimization algorithm (PPO) (clip version)
     with support for recurrent policies (LSTM).
@@ -97,13 +93,13 @@ class RecurrentPPO(OnPolicyAlgorithm):
         "MultiInputPolicy": MultiInputLstmPolicy,
     }
 
-    policy: RecurrentActorCriticPolicy
-    policy_class: Type[RecurrentActorCriticPolicy]
+    policy: BaseRecurrentActorCriticPolicy[RecurrentState]
+    policy_class: Type[BaseRecurrentActorCriticPolicy[RecurrentState]]
     rollout_buffer: RecurrentRolloutBuffer
 
     def __init__(
         self,
-        policy: Union[str, Type[BaseRecurrentActorCriticPolicy]],
+        policy: Union[str, Type[BaseRecurrentActorCriticPolicy[RecurrentState]]],
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-4,
         n_steps: int = 128,
@@ -201,10 +197,40 @@ class RecurrentPPO(OnPolicyAlgorithm):
         self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
-        self._last_lstm_states: Optional[ActorCriticStates] = None
+        self._last_lstm_states: Optional[RecurrentState] = None
 
         if _init_setup_model:
             self._setup_model()
+
+    def think_for_n_steps(
+        self, n_steps: int, obs_tensor: TorchGymObs, lstm_states: Optional[RecurrentState], episode_starts: th.Tensor
+    ) -> RecurrentState:
+        if lstm_states is None:
+            out = self.policy.recurrent_initial_state(episode_starts.size(0), device=self.device)
+            lstm_states = out
+
+        if not episode_starts.any() or n_steps == 0:
+            return lstm_states
+        # ignore because TorchGymObs and TensorTree do not match
+        obs_for_start_envs: TorchGymObs = tree_index(obs_tensor, (episode_starts,))  # type: ignore[type-var]
+        lstm_states_for_start_envs = tree_index(lstm_states, (slice(None), episode_starts))
+
+        reset_all = th.ones(int(episode_starts.sum().item()), device=self.device, dtype=th.bool)
+        do_not_reset = ~reset_all
+        for step_i in range(n_steps):
+            _, _, _, lstm_states_for_start_envs = self.policy.forward(
+                obs_for_start_envs,
+                lstm_states_for_start_envs,
+                reset_all if step_i == 0 else do_not_reset,
+            )
+
+        def _set_thinking(x, y) -> th.Tensor:
+            x = x.clone()  # Don't overwrite previous tensor
+            x[:, episode_starts] = y
+            return x
+
+        lstm_states = tree_map(_set_thinking, lstm_states, lstm_states_for_start_envs)
+        return lstm_states
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -222,7 +248,7 @@ class RecurrentPPO(OnPolicyAlgorithm):
         # if not isinstance(self.policy, RecurrentActorCriticPolicy):
         #     raise ValueError("Policy must subclass RecurrentActorCriticPolicy")
 
-        hidden_state_example = self.policy.recurrent_initial_state(n_envs=self.n_envs, device=self.device)
+        hidden_state_example: RecurrentState = self.policy.recurrent_initial_state(n_envs=self.n_envs, device=self.device)
 
         self.rollout_buffer = RecurrentRolloutBuffer(
             self.n_steps,
