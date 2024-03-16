@@ -133,8 +133,8 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
             n_steps=n_steps,
             gamma=gamma,
             gae_lambda=gae_lambda,
-            ent_coef=ent_coef,  # type: ignore
-            vf_coef=vf_coef,  # type: ignore
+            ent_coef=ent_coef,
+            vf_coef=vf_coef,
             max_grad_norm=max_grad_norm,
             use_sde=use_sde,
             sde_sample_freq=sde_sample_freq,
@@ -194,8 +194,13 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         self.batch_envs = batch_envs
         self.batch_time = batch_time
         self.n_epochs = n_epochs
-        self.clip_range: Schedule = clip_range  # type: ignore
-        self.clip_range_vf: Schedule = clip_range_vf  # type: ignore
+        self.clip_range = get_schedule_fn(clip_range)
+        if clip_range_vf is not None:
+            if isinstance(clip_range_vf, (float, int)):
+                assert clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
+            self.clip_range_vf = get_schedule_fn(clip_range_vf)
+        else:
+            self.clip_range_vf = None
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
         self._last_lstm_states: Optional[RecurrentState] = None
@@ -262,16 +267,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
             n_envs=self.n_envs,
         )
         self._last_lstm_states = tree_map(lambda x: th.zeros_like(x, memory_format=th.contiguous_format), hidden_state_example)
-
-        # Initialize schedules for policy/value clipping and loss coefficients
-        self.ent_coef = get_schedule_fn(self.ent_coef)  # type: ignore[assignment]
-        self.vf_coef = get_schedule_fn(self.vf_coef)  # type: ignore[assignment]
-        self.clip_range = get_schedule_fn(self.clip_range)
-        if self.clip_range_vf is not None:
-            if isinstance(self.clip_range_vf, (float, int)):
-                assert self.clip_range_vf > 0, "`clip_range_vf` must be positive, pass `None` to deactivate vf clipping"
-
-            self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 
     @th.no_grad()
     def collect_rollouts(  # type: ignore[override]
@@ -412,8 +407,8 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         else:
             clip_range_vf = math.inf
 
-        ent_coef: float = self.ent_coef(self._current_progress_remaining)  # type: ignore
-        vf_coef: float = self.vf_coef(self._current_progress_remaining)  # type: ignore
+        ent_coef: float = self.ent_coef(self._current_progress_remaining)
+        vf_coef: float = self.vf_coef(self._current_progress_remaining)
 
         entropy_losses = []
         pg_losses, value_losses = [], []

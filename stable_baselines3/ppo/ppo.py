@@ -78,6 +78,8 @@ class PPO(OnPolicyAlgorithm):
         "CnnPolicy": ActorCriticCnnPolicy,
         "MultiInputPolicy": MultiInputActorCriticPolicy,
     }
+    clip_range: Schedule
+    clip_range_vf: Optional[Schedule]
 
     def __init__(
         self,
@@ -92,8 +94,8 @@ class PPO(OnPolicyAlgorithm):
         clip_range: Union[float, Schedule] = 0.2,
         clip_range_vf: Union[None, float, Schedule] = None,
         normalize_advantage: bool = True,
-        ent_coef: float = 0.0,
-        vf_coef: float = 0.5,
+        ent_coef: Union[float, Schedule] = 0.0,
+        vf_coef: Union[float, Schedule] = 0.5,
         max_grad_norm: Optional[float] = 0.5,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
@@ -160,24 +162,18 @@ class PPO(OnPolicyAlgorithm):
                 )
         self.batch_size = batch_size
         self.n_epochs = n_epochs
-        self.clip_range = clip_range
-        self.clip_range_vf = clip_range_vf
+        self.clip_range = get_schedule_fn(clip_range)
+        if clip_range_vf is not None:
+            if isinstance(clip_range_vf, (float, int)):
+                assert clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
+            self.clip_range_vf = get_schedule_fn(clip_range_vf)
+        else:
+            self.clip_range_vf = None
         self.normalize_advantage = normalize_advantage
         self.target_kl = target_kl
 
         if _init_setup_model:
             self._setup_model()
-
-    def _setup_model(self) -> None:
-        super()._setup_model()
-
-        # Initialize schedules for policy/value clipping
-        self.clip_range = get_schedule_fn(self.clip_range)
-        if self.clip_range_vf is not None:
-            if isinstance(self.clip_range_vf, (float, int)):
-                assert self.clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
-
-            self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 
     def train(self) -> None:
         """
