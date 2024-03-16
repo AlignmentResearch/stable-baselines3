@@ -1,4 +1,3 @@
-import math
 import sys
 import time
 import warnings
@@ -97,6 +96,8 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
     policy: BaseRecurrentActorCriticPolicy[RecurrentState]
     policy_class: Type[BaseRecurrentActorCriticPolicy[RecurrentState]]
     rollout_buffer: RecurrentRolloutBuffer
+    clip_range: Schedule
+    clip_range_vf: Optional[Schedule]
 
     def __init__(
         self,
@@ -402,22 +403,19 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         # Compute current clip range
         clip_range = self.clip_range(self._current_progress_remaining)
         # Optional: clip range for the value function
-        if self.clip_range_vf is not None:
-            clip_range_vf = self.clip_range_vf(self._current_progress_remaining)
-        else:
-            clip_range_vf = math.inf
+        clip_range_vf = None if self.clip_range_vf is None else self.clip_range_vf(self._current_progress_remaining)  # type: ignore[operator]
 
         ent_coef: float = self.ent_coef(self._current_progress_remaining)
         vf_coef: float = self.vf_coef(self._current_progress_remaining)
 
         entropy_losses = []
         pg_losses, value_losses = [], []
+        clip_fractions = []
+        clip_fractions_vf = []
         value_diffs_mean = []
         value_diffs_min = []
         value_diffs_max = []
-        clip_fractions = []
-        clip_fractions_vf = []
-        approx_kl_divs = []
+        approx_kl_div = 0.0
 
         continue_training = True
 
@@ -460,13 +458,15 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
                     clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
 
-                value_diff = values - rollout_data.old_values
-                if self.clip_range_vf is None:
+                if clip_range_vf is None:
                     # No clipping
                     values_pred = values
+                    with th.no_grad():
+                        value_diff = values - rollout_data.old_values
                 else:
                     # Clip the difference between old and new value
                     # NOTE: this depends on the reward scaling
+                    value_diff = values - rollout_data.old_values
                     values_pred = rollout_data.old_values + th.clamp(value_diff, -clip_range_vf, clip_range_vf)
                 # Value loss using the TD(gae_lambda) target
                 value_loss = F.mse_loss(rollout_data.returns, values_pred)
@@ -497,7 +497,6 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).item()
-                    approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False
@@ -526,9 +525,9 @@ class RecurrentPPO(OnPolicyAlgorithm, Generic[RecurrentState]):
         self.logger.record("train/value_diff_mean", np.mean(value_diffs_mean))
         self.logger.record("train/value_diff_min", np.min(value_diffs_min))
         self.logger.record("train/value_diff_max", np.max(value_diffs_max))
-        self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
+        self.logger.record("train/approx_kl", approx_kl_div)
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
-        self.logger.record("train/clip_fraction", np.mean(clip_fractions_vf))
+        self.logger.record("train/clip_fraction_vf", np.mean(clip_fractions_vf))
         self.logger.record("train/loss", loss.item())
         self.logger.record("train/explained_variance", explained_var.item())
         if hasattr(self.policy, "log_std"):

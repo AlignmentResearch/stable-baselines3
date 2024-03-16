@@ -186,17 +186,20 @@ class PPO(OnPolicyAlgorithm):
         # Compute current clip range
         clip_range = self.clip_range(self._current_progress_remaining)  # type: ignore[operator]
         # Optional: clip range for the value function
-        if self.clip_range_vf is not None:
-            clip_range_vf = self.clip_range_vf(self._current_progress_remaining)  # type: ignore[operator]
+        clip_range_vf = None if self.clip_range_vf is None else self.clip_range_vf(self._current_progress_remaining)  # type: ignore[operator]
 
         entropy_losses = []
         pg_losses, value_losses = [], []
         clip_fractions = []
+        clip_fractions_vf = []
+        value_diffs_mean = []
+        value_diffs_min = []
+        value_diffs_max = []
+        approx_kl_div = 0.0
 
         continue_training = True
         # train for n_epochs epochs
         for epoch in range(self.n_epochs):
-            approx_kl_divs = []
             # Do a complete pass on the rollout buffer
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions
@@ -229,18 +232,26 @@ class PPO(OnPolicyAlgorithm):
                 clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
                 clip_fractions.append(clip_fraction)
 
-                if self.clip_range_vf is None:
+                if clip_range_vf is None:
                     # No clipping
                     values_pred = values
+                    with th.no_grad():
+                        value_diff = values - rollout_data.old_values
                 else:
                     # Clip the difference between old and new value
                     # NOTE: this depends on the reward scaling
-                    values_pred = rollout_data.old_values + th.clamp(
-                        values - rollout_data.old_values, -clip_range_vf, clip_range_vf
-                    )
+                    value_diff = values - rollout_data.old_values
+                    values_pred = rollout_data.old_values + th.clamp(value_diff, -clip_range_vf, clip_range_vf)
                 # Value loss using the TD(gae_lambda) target
                 value_loss = F.mse_loss(rollout_data.returns, values_pred)
                 value_losses.append(value_loss.item())
+                with th.no_grad():
+                    value_diff_abs = value_diff.abs()
+                    value_diffs_mean.append(value_diff_abs.mean().item())
+                    value_diffs_min.append(value_diff_abs.min().item())
+                    value_diffs_max.append(value_diff_abs.max().item())
+                    clip_fraction_vf = th.mean((value_diff_abs > clip_range_vf).float()).item()
+                clip_fractions_vf.append(clip_fraction_vf)
 
                 # Entropy loss favor exploration
                 if entropy is None:
@@ -260,7 +271,6 @@ class PPO(OnPolicyAlgorithm):
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
-                    approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False
@@ -286,8 +296,12 @@ class PPO(OnPolicyAlgorithm):
         self.logger.record("train/entropy_loss", np.mean(entropy_losses))
         self.logger.record("train/policy_gradient_loss", np.mean(pg_losses))
         self.logger.record("train/value_loss", np.mean(value_losses))
-        self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
+        self.logger.record("train/value_diff_mean", np.mean(value_diffs_mean))
+        self.logger.record("train/value_diff_min", np.min(value_diffs_min))
+        self.logger.record("train/value_diff_max", np.max(value_diffs_max))
+        self.logger.record("train/approx_kl", approx_kl_div)
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
+        self.logger.record("train/clip_fraction_vf", np.mean(clip_fractions_vf))
         self.logger.record("train/loss", loss.item())
         self.logger.record("train/explained_variance", explained_var.item())
         if hasattr(self.policy, "log_std"):
